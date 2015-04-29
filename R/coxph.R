@@ -17,6 +17,9 @@ fit_ICPH <- function(obsMat, covars){
 	myFit <- .Call('test_nne', pmass, mi_info$l_inds, mi_info$r_inds, covars) 
 	names(myFit) <- c('p_hat', 'coefficients', 'final_llk', 'iterations', 'score')
 	myFit[['T_bull_Intervals']] <- rbind(mi_info[['mi_l']], mi_info[['mi_r']])
+	myFit$p_hat <- myFit$p_hat / sum(myFit$p_hat) 
+	#removes occasional numerical error. Error on the order of 10^(-15), but causes problem when calculating last 
+	#entry for estimates survival curve
 	return(myFit)
 }
 
@@ -62,7 +65,8 @@ ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = 0){
    	fitInfo <- fit_ICPH(yMat, x)
    	if(seed < 0) stop('seed must be non-negative')   
 	dataEnv <- list()
-	dataEnv[['x']] <- x
+	dataEnv[['x']] <- as.matrix(x, nrow = nrow(yMat))
+	if(ncol(dataEnv$x) == 1) colnames(dataEnv[['x']]) <- as.character(cl[[2]][[3]])
 	dataEnv[['y']] <- yMat
 	seeds = 1:bs_samples + seed
 	bsMat <- numeric()
@@ -82,7 +86,13 @@ ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = 0){
 				getBS_coef(sampDataEnv)
 	    	}
 	    }
-   	 colnames(bsMat) <- colnames(x)
+	    
+	 xNames <- colnames(x)
+	 if(!is.matrix(x)){
+	 	xNames <- as.character(cl[[2]][[3]])
+   	   	names(fitInfo$coefficients) <- xNames
+   	 }
+   	 colnames(bsMat) <- xNames
    	 incompleteIndicator <- is.na(bsMat[,1])
    	 numNA <- sum(incompleteIndicator)
    	 if(numNA > 0){
@@ -100,7 +110,7 @@ ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = 0){
     	covar <- NULL
     	coef_bc <- NULL
     }
-    names(fitInfo$coefficients) <- colnames(x)
+    names(fitInfo$coefficients) <- xNames
     fitInfo$bsMat <- bsMat
     fitInfo$var <- covar
     fitInfo$call = cl
@@ -128,6 +138,7 @@ expandX <- function(formula, data){
         ind = which(colnames(x) == "(Intercept)")
         x <- x[, -ind]
     }
+    x <- matrix(x, nrow= nrow(mf))
     return(x)
 }
 
@@ -148,9 +159,11 @@ getSCurves <- function(fit, newdata){
 	}
 	x_l <- fit$T_bull_Intervals[1,]
 	x_u <- fit$T_bull_Intervals[2,]
+	x_l <- c(x_l[1], x_l)
+	x_u <- c(x_l[1], x_u)
 	Tbull_intervals <- cbind(x_l,  x_u)
 	colnames(Tbull_intervals) <- c('lower', 'upper')
-	s <- 1 - cumsum(fit$p_hat)
+	s <- 1 - c(0, cumsum(fit$p_hat))
 	ans <- list(Tbull_ints = Tbull_intervals, "S_curves" = list())
 	for(i in 1:length(etas)){
 		eta <- etas[i]
