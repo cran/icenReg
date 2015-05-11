@@ -1,3 +1,11 @@
+#Updates from v1.1:
+#	Stricter convergence criteria (10^-10 instead of 10^-7)
+#	Allows for bs_samples = 0 in ic_ph
+#	Allows for fitting of models with only 1 covariate
+#	Fixed bug in parameterization of imputation model
+#	Fixed bug that imputation model sometimes simulates Inf, breaking coxph
+#	Added dataset (mdata)
+#	slight modification in plot of survival curve
 
 findMaximalIntersections <- function(lower, upper){
 	allVals <- sort(unique(c(lower,upper)) )
@@ -25,7 +33,7 @@ fit_ICPH <- function(obsMat, covars){
 
 
 
-ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = 0){
+ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = NULL){
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
     m <- match(c("formula", "data", "subset", "weights", "na.action", 
@@ -42,9 +50,11 @@ ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = 0){
     	stop('no covariates included. Try using computeMLE in MLECens package')
     }
      x <- model.matrix(mt, mf, contrasts)
+     xNames <- colnames(x)
 	if('(Intercept)' %in% colnames(x)){	
 		ind = which(colnames(x) == '(Intercept)')
 		x <- x[,-ind]
+		xNames <- xNames[-ind]
 	}
 	
     yMat <- as.matrix(y)[,1:2]
@@ -63,11 +73,13 @@ ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = 0){
     if(is(invertResult, 'try-error'))
 	    stop('covariate matrix is computationally singular! Make sure not to add intercept to model, also make sure every factor has observations at every level')
    	fitInfo <- fit_ICPH(yMat, x)
-   	if(seed < 0) stop('seed must be non-negative')   
 	dataEnv <- list()
 	dataEnv[['x']] <- as.matrix(x, nrow = nrow(yMat))
 	if(ncol(dataEnv$x) == 1) colnames(dataEnv[['x']]) <- as.character(cl[[2]][[3]])
 	dataEnv[['y']] <- yMat
+	if(!is.numeric(seed))
+		seed <- round(runif(1, max = 10000000))
+   	if(seed < 0) stop('seed must be non-negative')   
 	seeds = 1:bs_samples + seed
 	bsMat <- numeric()
 	if(bs_samples > 0){
@@ -86,20 +98,22 @@ ic_ph <- function(formula, data, bs_samples = 20, useMCores = F, seed = 0){
 				getBS_coef(sampDataEnv)
 	    	}
 	    }
+   	 }
 	    
-	 xNames <- colnames(x)
+#	 xNames <- colnames(x)
 	 if(!is.matrix(x)){
 	 	xNames <- as.character(cl[[2]][[3]])
-   	   	names(fitInfo$coefficients) <- xNames
-   	 }
-   	 colnames(bsMat) <- xNames
-   	 incompleteIndicator <- is.na(bsMat[,1])
-   	 numNA <- sum(incompleteIndicator)
-   	 if(numNA > 0){
-    		if(numNA / length(incompleteIndicator) >= 0.1)
-    		cat('warning: ', numNA,' bootstrap samples (out of ', bs_samples, ') were dropped due to singular covariate matrix. Likely due to very sparse covariate. Be wary of these results.\n', sep = '')
-    		bsMat <- bsMat[!incompleteIndicator,]
-    	}
+	 }
+	 if(bs_samples > 0){
+	   	 names(fitInfo$coefficients) <- xNames
+	   	 colnames(bsMat) <- xNames
+	   	 incompleteIndicator <- is.na(bsMat[,1])
+	   	 numNA <- sum(incompleteIndicator)
+	   	 if(numNA > 0){
+	    		if(numNA / length(incompleteIndicator) >= 0.1)
+	    		cat('warning: ', numNA,' bootstrap samples (out of ', bs_samples, ') were dropped due to singular covariate matrix. Likely due to very sparse covariate. Be wary of these results.\n', sep = '')
+	    		bsMat <- bsMat[!incompleteIndicator,]
+	    	}
 	covar <- cov(bsMat)
     est_bias <- colMeans(bsMat) - fitInfo$coefficients 
     fitInfo$coef_bc <- fitInfo$coefficients - est_bias
@@ -177,7 +191,6 @@ plot.ic_coxph <- function(x, y, ...){
 	if(inherits(x, 'impute_par_icph'))	stop('plot currently not supported for imputation model')
 	
 	curveInfo <- getSCurves(x, y)
-
 	
 	allx <- c(curveInfo$Tbull_ints[,1], curveInfo$Tbull_ints[,2])
 	dummyx <- range(allx, finite = TRUE)
@@ -186,10 +199,12 @@ plot.ic_coxph <- function(x, y, ...){
 	plot(dummyx, dummyy, xlab = 'time', ylab = 'S(t)', ..., type = 'n')
 	x_l <- curveInfo$Tbull_ints[,1]
 	x_u <- curveInfo$Tbull_ints[,2]
+	k <- length(x_l)
 	ss <- curveInfo$S_curves
 	for(i in 1:length(ss)){
 		lines(x_l, ss[[i]], col = i, type = 's')
 		lines(x_u, ss[[i]], col = i, type = 's')
+		lines(c(x_l[k], x_u[k]), c(ss[[i]][k], ss[[i]][k]), col = i)
 	}
 	if(length(ss) > 1){
 		grpNames <- names(ss)
@@ -281,10 +296,10 @@ getBS_coef <- function(sampDataEnv){
 
 
 
-imputeCensoredData_exp <- function(l, u, impInfo, dist = 'web'){
+imputeCensoredData_exp <- function(l, u, impInfo, dist = 'web', maxVal){
 	
 	if(dist == 'exp'){
-		rate <- impInfo$rates
+		rate <- impInfo$indInters
 		p_l <- pexp(l, rate)
 		p_u <- pexp(u, rate)
 		
@@ -295,14 +310,16 @@ imputeCensoredData_exp <- function(l, u, impInfo, dist = 'web'){
 		return(samp_val)
 	}
 	if(dist =='web'){
-		rate <- impInfo$rates
+		inter <- impInfo$indInters
 		scale <- impInfo$scale
-		p_l <- pweibull(l, shape = rate, scale = scale)
-		p_u <- pweibull(u, shape = rate, scale = scale)
+		p_l <- pweibull(l, shape = 1/scale, scale = inter)
+		p_u <- pweibull(u, shape = 1/scale, scale = inter)
 		samp_q <- runif(length(l), p_l, p_u)
-		samp_val <- qweibull(samp_q, shape = rate, scale = scale)
+		samp_val <- qweibull(samp_q, shape = 1/scale, scale = inter)
 		is.inf <- samp_val == Inf
 		samp_val[is.inf] <- u[is.inf]
+		replaceInds <- samp_val > maxVal
+		samp_val[replaceInds] <- maxVal
 		return(samp_val)
 	}
 }
@@ -315,8 +332,12 @@ fullParamFit <- function(formula, data, param_y, dist = 'weibull'){
 	return(fit)
 }
 
-fullParamFit_exp <- function(formula, data, param_y, dist = 'weibull'){
+fullParamFit_exp <- function(formula, data, param_y, rightCenVal, dist = 'weibull'){
 	data$param_y = param_y
+	isInf <- data$param_y[,2] == Inf
+	data$param_y[isInf,2] <- rightCenVal
+	if( any(data$param_y[,2] > rightCenVal) )	stop('finite right side of interval greater than provided rightCenVal. Use larger rightCenVal')
+	
 	fit <- survreg(formula, data, dist = dist, x = TRUE)
 	fit$var_chol <- chol(fit$var)
 	return(fit)
@@ -333,14 +354,14 @@ simPars_fromFit <- function(fit, web = TRUE){
 		scale <- exp(sampPars[k])
 		sampPars <- sampPars[-k]
 	}
-	indRates <- exp(-fit$x %*% sampPars)
-	output <- list(rates = indRates)
+	indInters <- exp(fit$x %*% sampPars)
+	output <- list(indInters = indInters)
 	if(web)
 		output$scale = scale
 	return(output)
 }
 
-impute_ic_ph <- function(formula, data, imps = 100, eta = 10^-10, seed = 1, useMCores = FALSE){
+impute_ic_ph <- function(formula, data, imps = 100, eta = 10^-10, rightCenVal = 10000, seed = NULL, useMCores = FALSE){
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
     m <- match(c("formula", "data", "subset", "weights", "na.action", 
@@ -378,7 +399,7 @@ impute_ic_ph <- function(formula, data, imps = 100, eta = 10^-10, seed = 1, useM
 	param_data  <- data.frame(mf[,-1])
 	param_formula <- formula
 	param_formula[[2]] <- as.name('param_y')
-	paramFit <- fullParamFit_exp(param_formula, mf, param_y)
+	paramFit <- fullParamFit_exp(param_formula, mf, param_y, rightCenVal)
 	
 	
 	fits_from_imputes <- list()
@@ -395,11 +416,15 @@ impute_ic_ph <- function(formula, data, imps = 100, eta = 10^-10, seed = 1, useM
 	mf_forImputes <- mf
 	mf_forImputes <- data.frame(mf_forImputes)
 	mf_forImputes[['one_vec']] <- one_vec
+
+	if(!is.numeric(seed))
+		seed <- round(runif(1, max = 10000000))
+
 	if(!useMCores){
 		set.seed(seed)
 		for(i in 1:imps){
 			sampPars <- simPars_fromFit(paramFit)
-			sim_y <- imputeCensoredData_exp(obs_l, obs_r, sampPars)
+			sim_y <- imputeCensoredData_exp(obs_l, obs_r, sampPars, maxVal = rightCenVal)
 			mf_forImputes[['sim_y']] <- sim_y		
 			fits_from_imputes[[i]] <- coxph(coxphFormula, data = mf_forImputes)
 		}
@@ -409,7 +434,7 @@ impute_ic_ph <- function(formula, data, imps = 100, eta = 10^-10, seed = 1, useM
 		fits_from_imputes <- foreach(i = 1:imps) %dopar%{
 			set.seed(i + seed)
 			sampPars <- simPars_fromFit(paramFit)
-			sim_y <- imputeCensoredData_exp(obs_l, obs_r, sampPars)
+			sim_y <- imputeCensoredData_exp(obs_l, obs_r, sampPars, maxVal = rightCenVal)
 			mf_forImputes[['sim_y']] <- sim_y
 			return(coxph(coxphFormula, data = mf_forImputes) ) 
 		}
@@ -450,7 +475,7 @@ simRawExpTimes <- function(b1 = 0.5, b2 = -0.5, n = 100, rate = 1){
 	return(data.frame(y = trueTimes, x1 = x1, x2 = x2, obs = rep(1, n)))
 }
 
-simICPH_beta <- function(n = 100, b1 = 0.5, b2 = -0.5, inspections = 1, shape1 = 2, shape2 = 2){
+simICPH_beta <- function(n = 100, b1 = 0.5, b2 = -0.5, inspections = 1, shape1 = 2, shape2 = 2, rndDigits = NULL){
 	rawQ <- runif(n)
     x1 <- rnorm(n)
     x2 <- rbinom(n, 1, 0.5) - 0.5
@@ -460,6 +485,8 @@ simICPH_beta <- function(n = 100, b1 = 0.5, b2 = -0.5, inspections = 1, shape1 =
     
     inspectionError = 1 / (inspections + 1)
     obsTimes <- 1 / (inspections + 1) + runif(n, min = -inspectionError, max = inspectionError)
+    if(!is.null(rndDigits))
+    	obsTimes <- round(obsTimes, rndDigits)
     
     l <- rep(0, n)
     u <- rep(0, n)
@@ -472,6 +499,8 @@ simICPH_beta <- function(n = 100, b1 = 0.5, b2 = -0.5, inspections = 1, shape1 =
     	for(i in 2:inspections){
 		    oldObsTimes <- obsTimes
     		obsTimes <- i / (inspections+1) + runif(n, min = -inspectionError, max = inspectionError)
+		    if(!is.null(rndDigits))
+    			obsTimes <- round(obsTimes, rndDigits)
     		caught <- trueTimes >= oldObsTimes  & trueTimes < obsTimes
     		needsCatch <- trueTimes > obsTimes
     		u[caught] <- obsTimes[caught]

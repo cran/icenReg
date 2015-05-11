@@ -8,7 +8,7 @@
 
 #include "intCoxFast.h"
 
-double icph_llk(vector<double> &S, vector<double> &expEta, vector<int> &lind, vector<int> &rind){
+/*double icph_llk(vector<double> &S, vector<double> &expEta, vector<int> &lind, vector<int> &rind){
     int n = lind.size();
     if(n != rind.size()){
         Rprintf("Warning: length r != length l\n");
@@ -38,42 +38,29 @@ double icph_llk(vector<double> &S, vector<double> &expEta, vector<int> &lind, ve
         if(isnan(llk)) llk = R_NegInf;
     }
     return(llk);
-}
+}   */
 
 double icph_llk_sumOnly(ICPH_OptimInfo &optinfo){
     int n = optinfo.P_obs.size();
     double llk = 0;
     for(int i = 0; i < n; i++)
         llk += log(optinfo.P_obs[i]);
+    if(isnan(llk))  llk = R_NegInf;
     return(llk);
 }
 
-void getNecInd(int p_ind1, int p_ind2,
-               vector<int> &l_inds, vector<int> &r_inds,
-               vector<int> &g1, vector<int> &g2){
-    g1.clear();
-    g2.clear();
-    bool in_g1;
-    bool in_g2;
-    for(int i = 0; i < l_inds.size(); i++){
-        in_g1 = l_inds[i] <= p_ind1 && r_inds[i] >= p_ind1;
-        in_g2 = l_inds[i] <= p_ind2 && r_inds[i] >= p_ind2;
-        if(in_g1 && !in_g2) g1.push_back(i);
-        else if(!in_g1 && in_g2) g2.push_back(i);
-        else if(l_inds[i] > p_ind1 && r_inds[i] <= p_ind2)  g1.push_back(i);
-    }
-    if(g1.size() == 0 || g2.size() == 0) {
-        Rprintf("Error: sizes of necessary inds = 0! This shouldn't happen if we only have Turnbull intervals\n");
-        Rprintf("p1 = %d, p2 = %d\n",p_ind1, p_ind2);
-    }
+double icph_llk_keepEta(ICPH_OptimInfo &optinfo){
+    int k = optinfo.p_mass.size();
+    int n = optinfo.P_obs.size();
+    optinfo.S[0] = 1.0;
+    for(int i = 0; i < k; i++){ optinfo.S[i+1] = optinfo.S[i] - optinfo.p_mass[i];}
+    for(int i = 0; i < n; i++){ update_p_ob(i, optinfo);}
+    return(icph_llk_sumOnly(optinfo));
 }
 
-void check_NN_id(int id1, int propID, ICPH_OptimInfo &optInfo){
-    if(optInfo.nn_info[id1].nn_id == propID) return;
-    getNecInd(id1, propID, optInfo.lind, optInfo.rind, optInfo.nn_info[id1].g1, optInfo.nn_info[id1].g2);
-}
 
-double min_icph_llk(vector<double> &P_obs, vector<int> &g1, vector<int> &g2){
+
+/*double min_icph_llk(vector<double> &P_obs, vector<int> &g1, vector<int> &g2){
     int n1 = g1.size();
     int n2 = g2.size();
     int thisInd;
@@ -90,58 +77,132 @@ double min_icph_llk(vector<double> &P_obs, vector<int> &g1, vector<int> &g2){
     }
     if(isnan(llk)) llk = R_NegInf;
     return(llk);
-}
+}   */
 
 void update_p_ob(int i, ICPH_OptimInfo &optinfo){
-    int l,r;
+    int l,r, k;
     l = optinfo.lind[i];
     r = optinfo.rind[i];
+    
+    if(l > r)   Rprintf("warning: l < r in update_p_ob!!!\n");
+    
+    k = optinfo.p_mass.size();
     double thisEE = optinfo.expEta[i];
-    double this_p = pow(optinfo.S[l], thisEE);
-    if(optinfo.S[r+1] > 0)
-        this_p -= pow(optinfo.S[r+1], thisEE);
+    double this_p = R_pow(optinfo.S[l], thisEE);
+    if( (r+1) < k )
+        this_p -= R_pow(optinfo.S[r+1], thisEE);
     optinfo.P_obs[i] = this_p;
     
 //    if(this_p < 0) Rprintf("l = %d, r = %d, S[l] = %f, S[r+1] = %f\n", l, r, optinfo.S[l], optinfo.S[r+1]);
 }
 
 
-void orderedExchange(int p1_ind, int p2_ind, double alpha, vector<int> &g1, vector<int> &g2, ICPH_OptimInfo &optInfo){
-    optInfo.p_mass[p1_ind] += alpha;
-    optInfo.p_mass[p2_ind] -= alpha;
-    for(int i = p1_ind; i < p2_ind; i++)    optInfo.S[i+1] -= alpha;
-    int thisInd;
-    for(int i = 0; i < g1.size(); i++){
-        thisInd = g1[i];
-        update_p_ob(thisInd, optInfo);
-    }
-    for(int i = 0; i < g2.size(); i++){
-        thisInd = g2[i];
-        update_p_ob(thisInd, optInfo);
-    }
-}
 
-void NNE_exchange(int p1_ind, int p2_ind, double alpha,
-                  ICPH_OptimInfo &optinfo){
-    orderedExchange(p1_ind, p2_ind, alpha, optinfo.nn_info[p1_ind].g1, optinfo.nn_info[p1_ind].g2, optinfo);
+void easyExchange(int p1, int p2, double delta, ICPH_OptimInfo &optinfo){
+    optinfo.p_mass[p1] += delta;
+    optinfo.p_mass[p2] -= delta;
 }
 
 
-void numericDerv_NNE(int p1_ind, int p2_ind, ICPH_OptimInfo &optinfo){
+void NNE_numeric_der(int p1, int p2, vector<double> &dvec, ICPH_OptimInfo &optinfo){
     double h = optinfo.h;
-    double lk0, lkl, lkh;
-    lk0 = min_icph_llk(optinfo.P_obs, optinfo.nn_info[p1_ind].g1, optinfo.nn_info[p1_ind].g2);
-    NNE_exchange(p1_ind, p2_ind, h, optinfo);
-    lkh = min_icph_llk(optinfo.P_obs, optinfo.nn_info[p1_ind].g1, optinfo.nn_info[p1_ind].g2);
-    NNE_exchange(p1_ind, p2_ind, -2*h, optinfo);
-    lkl = min_icph_llk(optinfo.P_obs, optinfo.nn_info[p1_ind].g1, optinfo.nn_info[p1_ind].g2);
-    NNE_exchange(p1_ind, p2_ind, h, optinfo);
+    double p1_s, p2_s;
+    p1_s = optinfo.p_mass[p1];
+    p2_s = optinfo.p_mass[p2];
+    dvec.resize(2);
     
-//    Rprintf("lk0 = %f, lkh = %f, lkl = %f, \n", lk0, lkh, lkl);
+    double lk0 = icph_llk_keepEta(optinfo);
+    easyExchange(p1, p2, h, optinfo);
+    double lkh = icph_llk_keepEta(optinfo);
+    easyExchange(p1, p2, -2*h, optinfo);
+    double lkl = icph_llk_keepEta(optinfo);
+    easyExchange(p1, p2, h, optinfo);
     
-    optinfo.nn_ders[0] = (lkh - lkl)/(2*h);
-    optinfo.nn_ders[1] = (lkh + lkl - 2 * lk0)/(h*h);
+    dvec[0] = (lkh - lkl)/(2*h);
+    dvec[1] = (lkh + lkl - 2*lk0) / (h*h);
+    
+    optinfo.p_mass[p1] = p1_s;
+    optinfo.p_mass[p2] = p2_s;
 }
+
+void NNE_optim(int p1, int p2, ICPH_OptimInfo &optinfo){
+    vector<double> dvec(2);
+    NNE_numeric_der(p1, p2, dvec, optinfo);
+    double ps1, ps2;
+    ps1 = optinfo.p_mass[p1];
+    ps2 = optinfo.p_mass[p2];
+    
+    
+    double prop;
+    if(dvec[1] < 0) prop = -dvec[0]/dvec[1];
+    else prop = signVal(dvec[0]) * 0.01;
+    
+    double maxProp = ps2;
+    double minProp = -ps1;
+    
+    prop = min(prop, maxProp);
+    prop = max(prop, minProp);
+    
+    double lk0 = icph_llk_keepEta(optinfo);
+    easyExchange(p1, p2, prop, optinfo);
+    double lknew = icph_llk_keepEta(optinfo);
+    
+    int tries = 0;
+    int maxtries = 10;
+    prop *= -1.0;
+    
+    while(tries < maxtries && lknew < lk0){
+        tries++;
+        prop *= 0.5;
+        easyExchange(p1, p2, prop, optinfo);
+        lknew = icph_llk_keepEta(optinfo);
+    }
+    
+    if(lknew < lk0){
+        optinfo.p_mass[p1] = ps1;
+        optinfo.p_mass[p2] = ps2;
+        lknew = icph_llk_keepEta(optinfo);
+        if(lknew < lk0) Rprintf("warning: likelihood decreased in NNE optim!\n");
+    }
+}
+
+void NNE_all(ICPH_OptimInfo &optinfo){
+    
+    int k = optinfo.p_mass.size();
+    vector<double> orgp(k);
+    for(int i = 0; i < k; i++)
+        orgp[i] = optinfo.p_mass[i];
+    double startllk = icph_llk_keepEta(optinfo);
+
+    
+    int p1, p2;
+    p1 = 0;
+    p2 = 1;
+    while(p2 < k){
+        if(optinfo.p_mass[p2] == 0) p2++;
+        else{
+            NNE_optim(p1, p2, optinfo);
+            p1 = p2;
+            p2++;
+            while(optinfo.p_mass[p1] <= 0 && p2 <k){
+                p1 = p2;
+                p2++;
+            }
+        }
+    }
+
+    double final_llk = icph_llk_keepEta(optinfo);
+    if(final_llk < startllk){
+        for(int i = 0; i < k; i++) optinfo.p_mass[i] = orgp[i];
+        final_llk = icph_llk_keepEta(optinfo);
+    }
+}
+
+
+
+
+
+
 
 void analyticDerv_VEM(vector<int> &minmax, vector<double> &output_dervs, ICPH_OptimInfo  &optinfo){
     vector<double>* beta = &(optinfo.expEta);
@@ -162,10 +223,10 @@ void analyticDerv_VEM(vector<int> &minmax, vector<double> &output_dervs, ICPH_Op
         r = optinfo.rind[i];
         pob = optinfo.P_obs[i];
         b = (*beta)[i];
-        leftSide = -b * pow( (*S)[l], b - 1 )/pob;
+        leftSide = -b * R_pow( (*S)[l], b - 1 )/pob;
         if((*S)[r+1] <= 0)  r0 = true;
         else                r0 = false;
-        if(!r0)             rightSide = b * pow( (*S)[r+1], b - 1 ) / pob;
+        if(r == false)             rightSide = b * R_pow( (*S)[r+1], b - 1 ) / pob;
         else                rightSide = 0;
         l_d_cont[i] = leftSide;
         r_d_cont[i] = rightSide;
@@ -174,6 +235,8 @@ void analyticDerv_VEM(vector<int> &minmax, vector<double> &output_dervs, ICPH_Op
         if(!r0)             r_d2_cont[i] = -rightSide * (b-1) / (*S)[r+1];
         else                r_d2_cont[i] = 0;
         }
+    
+    
     
     int ind;
     vector<bool>* gl;
@@ -185,7 +248,7 @@ void analyticDerv_VEM(vector<int> &minmax, vector<double> &output_dervs, ICPH_Op
         for(int j = 0; j < (*gr).size(); j++){
             ind = (*gr)[j];
             rightSide = r_d_cont[ind];
-            if((*gl)[j]) leftSide = l_d_cont[ind];
+            if((*gl)[j] == true) leftSide = l_d_cont[ind];
             else leftSide = 0;
             p_ders[i] += leftSide + rightSide;
         }
@@ -195,15 +258,18 @@ void analyticDerv_VEM(vector<int> &minmax, vector<double> &output_dervs, ICPH_Op
     double minD = R_PosInf;
     double maxD = R_NegInf;
     for(int i = 0; i < k; i++){
-        if(minD > p_ders[i] && optinfo.p_mass[i] > 0.000005){
-            minInd = i;
-            minD = p_ders[i];
+        if(minD > p_ders[i]){
+            if(optinfo.p_mass[i] > 0.000005){
+                minInd = i;
+                minD = p_ders[i];
+            }
         }
         if(maxD < p_ders[i]){
             maxInd = i;
             maxD = p_ders[i];
         }
     }
+    
     
     double mind2 = 0;
     double maxd2 = 0;
@@ -254,11 +320,42 @@ void analyticDerv_VEM(vector<int> &minmax, vector<double> &output_dervs, ICPH_Op
     minmax[1] = minInd;
 }
 
-void vem_update(ICPH_OptimInfo &optinfo){
-    vector<double> dervInfo(4);
-    vector<int> minmaxInd(2);
+void vem_update(ICPH_OptimInfo &optinfo, bool recPosd){
+    double veryBeginllk = icph_llk_keepEta(optinfo);
+    for(int i = 0; i < optinfo.P_obs.size(); i++)
+        update_p_ob(i, optinfo);
+    double secllk = icph_llk_keepEta(optinfo);
+    if(abs(veryBeginllk - secllk) > 0.00000001) Rprintf("warning: p_obs were not updated properly entering vem\n");
     
-    analyticDerv_VEM(minmaxInd, dervInfo, optinfo);
+    
+    int k = optinfo.p_mass.size();
+    vector<double> d1v(k);
+    vector<double> d2v(k);
+    analyticDerv_ICM(d1v, d2v, optinfo);
+    vector<int> minmaxInd(2);
+    double mnd = R_PosInf;
+    double mxd = R_NegInf;
+//    double mxd_bck = R_NegInf;
+    for(int i = 0; i < k; i++){
+        if(mnd > d1v[i]){
+            if(optinfo.p_mass[i] > optinfo.h){
+                mnd = d1v[i];
+                minmaxInd[1] = i;
+            }
+        }
+        if(optinfo.p_mass[i] > optinfo.h || !recPosd){
+            if(mxd < d1v[i]){
+                mxd = d1v[i];
+                minmaxInd[0] = i;
+            }
+        }
+  /*      if(mxd_bck < d1v[i]){
+            if(optinfo.p_mass[i] > optinfo.h){
+                mxd_bck = d1v[i];
+                minmaxInd[2] = i;
+            }
+        }   */
+    }
     
     int p1, p2, thisCase;
     p1 = 0;
@@ -269,226 +366,125 @@ void vem_update(ICPH_OptimInfo &optinfo){
     if(minmaxInd[0] > minmaxInd[1]){
         p2 = minmaxInd[0];
         p1 = minmaxInd[1];
-        analtyicD = dervInfo[2] - dervInfo[0];
-        d2 = dervInfo[3] - dervInfo[1];
-        
-        minProp = -optinfo.p_mass[p1]/2;
-        maxProp = optinfo.p_mass[p2]/2;
-//        Rprintf("case 1 p1 mass = %f, p2 mass = %f, maxProp = %f, minProp = %f \n",optinfo.p_mass[p1], optinfo.p_mass[p2], maxProp, minProp);
+        analtyicD = mnd - mxd;
+        minProp = -optinfo.p_mass[p1];
+        maxProp = optinfo.p_mass[p2];
         thisCase = 1;
     }
     else if(minmaxInd[0] < minmaxInd[1]){
         p1 = minmaxInd[0];
         p2 = minmaxInd[1];
-        analtyicD = dervInfo[0] - dervInfo[2];
-        d2 = dervInfo[1] - dervInfo[3];
-        minProp = -optinfo.p_mass[p1]/2;
-        maxProp = optinfo.p_mass[p2]/2;
-//        Rprintf("case 2 p1 mass = %f, p2 mass = %f\n",optinfo.p_mass[p1], optinfo.p_mass[p2]);
+        analtyicD = mxd - mnd;
+        minProp = -optinfo.p_mass[p1];
+        maxProp = optinfo.p_mass[p2];
         thisCase = 2;
     }
     else{
-       // Rprintf("Error in VEM step: p1 = p2! p1 = %d, p2 = %d, d_p1 = %f, d_p2 = %f Skipping step\n", minmaxInd[0], minmaxInd[1], dervInfo[0], dervInfo[2]);
         return;
     }
     
-    vector<int> g1;
-    vector<int> g2;
+ //   vector<int> g1;
+ //   vector<int> g2;
     
-    getNecInd(p1, p2, optinfo.lind, optinfo.rind, g1, g2);
- //   double prop = -d1/d2;
- //   prop = min(prop, maxProp);
-//    Rprintf("prop = %f,\n d1 = %f d2 = %f\n", prop, d1, d2);
-
-//    Rprintf("p1 = %d, p2 = %d\n", p1, p2);
-   
-    
-//    orderedExchange(p1, p2, 0, g1, g2, optinfo);
-
-    double lk0 = min_icph_llk(optinfo.P_obs, g1, g2);
-    
-    
+//    getNecInd(p1, p2, optinfo.lind, optinfo.rind, g1, g2);
+    double lk0 = icph_llk_keepEta(optinfo);             //icph_llk_sumOnly(optinfo);
     double h = optinfo.h;
+
+    double p1m, p2m;
+    p1m = optinfo.p_mass[p1];
+    p2m = optinfo.p_mass[p2];
     
- //   double maxPos_h1 = optinfo.p_mass[p2];
- //   double maxPos_h2 = optinfo.p_mass[p2];
+    double backh = -2 * h;
+    easyExchange(p1, p2, h, optinfo);                   //orderedExchange(p1, p2, h, g1, g2, optinfo);
+    double lkh =  icph_llk_keepEta(optinfo);            //icph_llk_sumOnly(optinfo);
+    easyExchange(p1, p2, backh, optinfo);                   //orderedExchange(p1, p2, -2*h, g1, g2, optinfo);
+    double lkl =  icph_llk_keepEta(optinfo);            //icph_llk_sumOnly(optinfo);
+    easyExchange(p1, p2, h, optinfo);                   //orderedExchange(p1, p2, h, g1, g2, optinfo);
+
+/*    double lk0_test = icph_llk_keepEta(optinfo);            //icph_llk_sumOnly(optinfo);
+    if(abs(lk0_test - lk0) > 0.00001){
+        Rprintf("error: lk0_test - lk0 *10^5 = %f. lk0 - veryBeginllk * 10^5 = %f\n, p1 = %d, p2 = %d, k = %d\n",
+                (lk0_test - lk0) * pow(10, 5),
+                (lk0 - veryBeginllk) * pow(10.0, 5.0),
+                p1, p2, optinfo.p_mass.size());
+        Rprintf("diff in pmasses = %f, %f, org pmasses = %f, %f\n",
+               (p1m - optinfo.p_mass[p1]) * pow(10,13),
+               (p2m - optinfo.p_mass[p2]) * pow(10,13),
+               p1m, p2m);
+    }   */
     
-    if(h > maxProp){
-        h = max(minProp, -h);
+    d1 = (lkh - lkl)/(h+h);
+    d2 = (lkh + lkl - 2 * lk0) / (h*h);
+    
+    double prop;
+    if(d2 < 0)
+        prop = -d1/d2;
+    else{
+        prop = d1;
     }
-    
-    orderedExchange(p1, p2, h, g1, g2, optinfo);
-    double lkh = min_icph_llk(optinfo.P_obs, g1, g2);
-    orderedExchange(p1, p2, h, g1, g2, optinfo);
-    double lkhh = min_icph_llk(optinfo.P_obs, g1, g2);
-
-    orderedExchange(p1, p2, -2*h, g1, g2, optinfo);
-
-   
-//    Rprintf("Analytic d1 = %f, d2 = %f\n", d1, d2);
-    
-    d1 = (lkhh - lk0)/(h+h);
-    
-    
-    d2 = (lkhh + lk0 - 2 * lkh) / (h*h);
-    
-//    Rprintf("Numeric  d1 = %f, d2 = %f\n", d1, d2);
-    
-//    Rprintf("d1 = %f, d2 = %f, llk0 = %f, llkh = %f, llkhh = %f, h = %f\n", d1, d2, lk0, lkh, lkhh, h);
-//    Rprintf("denom = %f\n",(lkhh + lk0 - 2 * lkh) );
-    
-    double prop = -d1/d2;
-    
     if(isnan(prop)){
         if(analtyicD < 0)
             prop = minProp;
         else
             prop = maxProp;
     }
-    
-//    Rprintf("unadjusted prop = %f\n", prop);
+
+    if(d1 * analtyicD < 0){
+        if(d1 > 0)
+            prop = maxProp;
+        else
+            prop = minProp;
+    }
     
     prop = min(prop, maxProp);
     prop = max(prop, minProp);
     
-    orderedExchange(p1, p2, prop, g1, g2, optinfo);
+    easyExchange(p1, p2, prop, optinfo);                            //orderedExchange(p1, p2, prop, g1, g2, optinfo);
 
     if(optinfo.p_mass[p1] < -optinfo.h) Rprintf("Warning: p_mass[p1] < 0! Case = %d p_mass[p1] = %f\n\n", thisCase, optinfo.p_mass[p1]);
     if(optinfo.p_mass[p2] < -optinfo.h) Rprintf("Warning: p_mass[p2] < 0! Case = %d p_mass[p2] = %f\n\n", thisCase, optinfo.p_mass[p2]);
     
     
-    double newllk = min_icph_llk(optinfo.P_obs, g1, g2);
- //   Rprintf("oldllk = %f, newllk = %f\n",oldllk, newllk);
+    double newllk =  icph_llk_keepEta(optinfo);     //icph_llk_sumOnly(optinfo);
     int tries = 0;
-    prop *= -1;
+    prop *= -1.0;
     
     bool keepDividing = false;
     if(isnan(newllk)) keepDividing = true;
     else if(lk0 > newllk) keepDividing = true;
+    int maxTries = 3;
     
-    while(tries < 10 && keepDividing){
+    
+    while(tries < maxTries && keepDividing){
         tries++;
         prop = prop/2;
-        orderedExchange(p1, p2, prop, g1, g2, optinfo);
-        newllk = min_icph_llk(optinfo.P_obs, g1, g2);
-        
+         easyExchange(p1, p2, prop, optinfo);               //orderedExchange(p1, p2, prop, g1, g2, optinfo);
+        newllk = icph_llk_keepEta(optinfo);         //icph_llk_sumOnly(optinfo);
         keepDividing = false;
         if(isnan(newllk)) keepDividing = true;
         else if(lk0 > newllk) keepDividing = true;
     }
     if( newllk < lk0){
-        orderedExchange(p1, p2, prop, g1, g2, optinfo);
-        newllk = min_icph_llk(optinfo.P_obs, g1, g2);
-
+        easyExchange(p1, p2, prop, optinfo);           //orderedExchange(p1, p2, prop, g1, g2, optinfo);
+        newllk = icph_llk_keepEta(optinfo);                 //icph_llk_sumOnly(optinfo);     //min_icph_llk(optinfo.P_obs, g1, g2);
+   /*     if(newllk < (lk0 - 0.00000001))
+            Rprintf("warning: even after compltete half stepping, newllk still less than lk0 in vem step!llk diff * 10^5 = %f d1 = %f, d2 = %f \n",
+                    (newllk-lk0) * pow(10.0, 5.0), d1, d2); */
     }
-//    Rprintf("In VEM step, change in llk = %f, number of tries = %d, p1 = %d, p2 = %d, prop = %f\n\n", newllk - lk0, tries, p1, p2, prop);
     if(isnan(prop)){
         Rprintf("isnan(prop)! lk0 = %f, newllk = %f, \n", lk0, newllk);
     }
-}
-
-
-
-void analyticDerv_NNE(int p1_ind, int p2_ind, ICPH_OptimInfo &optinfo){
-    vector<double>* beta = &(optinfo.expEta);
-    vector<double>* S = &(optinfo.S);
-    vector<int>* g1 = &(optinfo.nn_info[p1_ind].g1);
-    vector<int>* g2 = &(optinfo.nn_info[p1_ind].g2);
-    optinfo.nn_ders[0] = 0;
-    optinfo.nn_ders[1] = 0;
-    
-    int ind, l ,r;
-    double dc, dc2, pob, b;
-    for(int i = 0; i < (*g1).size(); i++){
-        ind = (*g1)[i];
-        l = optinfo.lind[ind];
-        r = optinfo.rind[ind] + 1;
-        pob = optinfo.P_obs[ind];
-        b = (*beta)[ind];
-        dc = b * ( pow( (*S)[l], b - 1 ) + pow( (*S)[r], b - 1 ) );
-        dc2 = b * (b-1) * ( pow( (*S)[l], b - 2 ) - pow( (*S)[r], b - 2 ) );
-        optinfo.nn_ders[0] += dc/pob;
-        optinfo.nn_ders[1] += -dc * dc /(pob*pob) - dc2 / pob;
-        
-    }
-
-    for(int i = 0; i < (*g2).size(); i++){
-        ind = (*g2)[i];
-        l = optinfo.lind[ind];
-        r = optinfo.rind[ind] + 1;
-        pob = optinfo.P_obs[ind];
-        b = (*beta)[ind];
-        dc = b * ( pow( (*S)[l], b - 1 ) + pow( (*S)[r], b - 1 ) );
-        dc2 = b * (b-1) * ( pow( (*S)[l], b - 2 ) - pow( (*S)[r], b - 2 ) );
-        
-        optinfo.nn_ders[0] -= dc/pob;
-        optinfo.nn_ders[1] -= dc * dc /(pob*pob) - dc2/pob;
+    if(newllk  < lk0){
+        optinfo.p_mass[p1] = p1m;
+        optinfo.p_mass[p2] = p2m;
+        newllk = icph_llk_keepEta(optinfo);
+        if(newllk != lk0)   Rprintf("resting did NOT work\n");
     }
 }
 
-void NNE_optim(int p1, int p2, ICPH_OptimInfo &optinfo){
-    check_NN_id(p1, p2, optinfo);
-
-    numericDerv_NNE(p1, p2, optinfo);
-//    analyticDerv_NNE(p1, p2, optinfo);
-    double d1 = optinfo.nn_ders[0];
-    double d2 = optinfo.nn_ders[1];
-    if(d2 >= 0){
-//        Rprintf("Warning: d2 = %f in NNE_optim! p1 = %f, p2 = %f, Quiting NNE_optim\n",
-  //              d2, optinfo.p_mass[p1], optinfo.p_mass[p2]);
-        return;
-    }
-    
-    double delta = -d1/d2;
-    if(isnan(delta)){
-        if(optinfo.p_mass[p1] < optinfo.p_mass[p2])
-            delta = optinfo.p_mass[p2];
-        else
-            delta = -optinfo.p_mass[p1];
-    }
-    double maxVal = optinfo.p_mass[p2];
-    double minVal = -optinfo.p_mass[p1];
-    
-    if(delta > maxVal) delta = maxVal;
-    if(delta < minVal) delta = minVal;
 
 
-    
-    double lk_old = min_icph_llk(optinfo.P_obs, optinfo.nn_info[p1].g1, optinfo.nn_info[p1].g2);
-    
-    NNE_exchange(p1, p2, delta, optinfo);
-    
-    double lk_new = min_icph_llk(optinfo.P_obs, optinfo.nn_info[p1].g1, optinfo.nn_info[p1].g2);
-    int tries = 0;
-    delta = -delta;
-    while(tries < optinfo.hSteps && lk_new < lk_old){
-        tries++;
-        delta = delta/2;
-        NNE_exchange(p1, p2, delta, optinfo);
-        lk_new = min_icph_llk(optinfo.P_obs, optinfo.nn_info[p1].g1, optinfo.nn_info[p1].g2);
-    }
-//    Rprintf("lk_new - lk_old = %f, tries = %d\n", lk_new - lk_old, tries);
-    if(lk_new < lk_old) NNE_exchange(p1, p2, delta, optinfo);
-}
 
-void NNE_all(ICPH_OptimInfo &optinfo){
-    int p1, p2, k;
-    p1 = 0;
-    p2 = 1;
-    k = optinfo.p_mass.size();
-    while(p2 < k){
-        if(optinfo.p_mass[p2] == 0) p2++;
-        else{
-            NNE_optim(p1, p2, optinfo);
-            p1 = p2;
-            p2++;
-            while(optinfo.p_mass[p1] <= 0 && p2 <k){
-                p1 = p2;
-                p2++;
-            }
-        }
-    }
-}
 
 
 double max(double a, double b){
@@ -502,15 +498,16 @@ double min(double a, double b){
 }
 
 void vec_delta(vector<double> &delta, ICPH_OptimInfo &optinfo){
-    int n = optinfo.P_obs.size();
+//    int n = optinfo.P_obs.size();
     int k = delta.size();
-    vector<double>* S;
+//    vector<double>* S;
     vector<double>* p_mass;
-    S = &(optinfo.S);
+//    S = &(optinfo.S);
     p_mass = &(optinfo.p_mass);
+//    double tot_p = 0;
     for(int i = 0; i < k; i++)  {(*p_mass)[i] += delta[i];}
-    for(int i = 0; i < k; i++)  {(*S)[i+1] = (*S)[i] - (*p_mass)[i];}
-    for(int i = 0; i < n; i++)  {update_p_ob(i, optinfo);}
+//    for(int i = 0; i < k; i++)  {(*S)[i+1] = (*S)[i] - (*p_mass)[i];}
+//    for(int i = 0; i < n; i++)  {update_p_ob(i, optinfo);}
 }
 
 void mult_vec(double a, vector<double> &vec){
@@ -538,10 +535,10 @@ void analyticDerv_ICM(vector<double> &d1, vector<double> &d2, ICPH_OptimInfo  &o
         r = optinfo.rind[i];
         pob = optinfo.P_obs[i];
         b = (*beta)[i];
-        leftSide = -b * pow( (*S)[l], b - 1 )/pob;
+        leftSide = -b * R_pow( (*S)[l], b - 1 )/pob;
         if((*S)[r+1] <= 0)  r0 = true;
         else                r0 = false;
-        if(!r0)             rightSide = b * pow( (*S)[r+1], b - 1 ) / pob;
+        if(!r0)             rightSide = b * R_pow( (*S)[r+1], b - 1 ) / pob;
         else                rightSide = 0;
         l_d_cont[i] = leftSide;
         r_d_cont[i] = rightSide;
@@ -577,60 +574,87 @@ void ICM_step(ICPH_OptimInfo &optinfo){
     vector<double> d1(k);
     vector<double> d2(k);
     vector<double> prop(k);
+    vector<double> orgp(k);
+    for(int i = 0; i < k; i++)
+        orgp[i] = optinfo.p_mass[i];
+    
     analyticDerv_ICM(d1, d2, optinfo);
+    
+    
+    
+/*    for(int i = 0; i < k; i++)
+        prop[i] = 0;
+    vec_delta(prop, optinfo);   */
+    
     
     double sumDelta = 0;
     for(int i = 0; i < k; i++){
-//        prop[i] = -d1[i]/d2[i];
-        prop[i] = d1[i];
+        if(d2[i] < 0)
+            prop[i] = -d1[i]/d2[i];
+        else
+            prop[i] = signVal(d1[i]) * 0.01;
         if(isnan(prop[i])){
             prop[i] = 0;
         }
         sumDelta += prop[i];
     }
+    
     sumDelta = sumDelta/k;
-    for(int i = 0; i < k; i++){
-        prop[i] -= sumDelta;
-    }
+    for(int i = 0; i < k; i++){prop[i] -= sumDelta;}
     double outside = 1;
     for(int i = 0; i < k; i++){
         if(prop[i] < - optinfo.p_mass[i]){
-            outside += -prop[i] - optinfo.p_mass[i];
+            outside += -1 * (prop[i] + optinfo.p_mass[i]);
             prop[i] = -optinfo.p_mass[i];
         }
+        if(prop[i] > 1 - optinfo.p_mass[i]){
+            outside -= prop[i] - (1 - optinfo.p_mass[i]);
+            prop[i] = 1 - optinfo.p_mass[i];
+        }
     }
+   
+    sumDelta = 0;
+    for(int i = 0; i < k; i++) { sumDelta += prop[i]; }
+    
     for(int i = 0; i < k; i++){
-        prop[i] = (optinfo.p_mass[i] + prop[i]) / outside - optinfo.p_mass[i];
+//        prop[i] = ((optinfo.p_mass[i] + prop[i]) / outside) - optinfo.p_mass[i];
+          prop[i] = ((optinfo.p_mass[i] + prop[i]) / (1 + sumDelta)) - optinfo.p_mass[i];
     }
     
-    double lk_old = icph_llk_sumOnly(optinfo);
+    for(int i = 0; i < k; i++){if(isnan(prop[i])) return;}
+    
+    double lk_old = icph_llk_keepEta(optinfo);          //icph_llk_sumOnly(optinfo);
     vec_delta(prop, optinfo);
 
-    double lk_new = icph_llk_sumOnly(optinfo);
+    double lk_new = icph_llk_keepEta(optinfo);          //icph_llk_sumOnly(optinfo);
     
     mult_vec(-1.0, prop);
+    
     int tries = 0;
     bool lk_bad = false;
     if(isnan(lk_new)) lk_bad = true;
     else if(lk_new < lk_old) lk_bad = true;
     
-    while(tries < 20 && lk_bad){
+    
+    while(tries < 10 && lk_bad){
         tries++;
         mult_vec(0.5, prop);
         vec_delta(prop, optinfo);
-        lk_new = icph_llk(optinfo);
+        lk_new = icph_llk_keepEta(optinfo);         //icph_llk_sumOnly(optinfo);
         lk_bad = false;
         if(isnan(lk_new)) lk_bad = true;
         else if(lk_new < lk_old) lk_bad = true;
     }
     
     if(lk_bad){
-//        Rprintf("should be back to 0...\n");
         vec_delta(prop, optinfo);
-        lk_new = icph_llk(optinfo);
+        lk_new = icph_llk_keepEta(optinfo); //icph_llk_sumOnly(optinfo);
     }
-//    Rprintf("After ICM step, change in llk = %f, tries = %d\n", lk_new - lk_old, tries);
     
+    if(lk_new < lk_old){
+        for(int i = 0; i < k; i++) optinfo.p_mass[i] = orgp[i];
+        lk_new = icph_llk_keepEta(optinfo);
+    }
 }
 
 
@@ -681,7 +705,7 @@ ICPH_OptimInfo::ICPH_OptimInfo(SEXP Rp_mass, SEXP Rlind, SEXP Rrind, SEXP Rcovar
     vdm_ders.resize(2);
     nn_ders.resize(2);
     hSteps = 10;
-    h = 0.00001;
+    h = 0.001;
     SEXP Rdims;
     Rdims = getAttrib(Rcovars, R_DimSymbol);
     PROTECT(Rdims);
@@ -701,7 +725,7 @@ ICPH_OptimInfo::ICPH_OptimInfo(SEXP Rp_mass, SEXP Rlind, SEXP Rrind, SEXP Rcovar
     }
 }
 
-SEXP test_icph_llk(SEXP cdf, SEXP expEta, SEXP lind, SEXP rind){
+/*SEXP test_icph_llk(SEXP cdf, SEXP expEta, SEXP lind, SEXP rind){
     int k = LENGTH(cdf);
     vector<double> cCdf(k);
     for (int i = 0; i < k; i++) cCdf[i] = REAL(cdf)[i];
@@ -717,17 +741,16 @@ SEXP test_icph_llk(SEXP cdf, SEXP expEta, SEXP lind, SEXP rind){
     REAL(ans)[0] = output;
     UNPROTECT(1);
     return(ans);
-}
+}   */
 
 
 void update_etas(ICPH_OptimInfo &optinfo){
     optinfo.eta = optinfo.covars * optinfo.betas;
-    int k = optinfo.eta.size();
-    for(int i = 0; i < k; i++)
-        optinfo.expEta[i] = exp(optinfo.eta[i]);
     int n = optinfo.P_obs.size();
     for(int i = 0; i < n; i++)
-        update_p_ob(i, optinfo);
+        optinfo.expEta[i] = exp(optinfo.eta[i]);
+//    for(int i = 0; i < n; i++)
+//        update_p_ob(i, optinfo);
 }
 
 void covar_d_analytic(Eigen::VectorXd &d1, Eigen::MatrixXd &dmat, ICPH_OptimInfo &optinfo){
@@ -749,12 +772,12 @@ void covar_d_analytic(Eigen::VectorXd &d1, Eigen::MatrixXd &dmat, ICPH_OptimInfo
         pob = optinfo.P_obs[i];
         s = (*S)[l];
         ls = log(s);
-        ps = pow(s, expEta);
+        ps = R_pow(s, expEta);
         left = ls * ps;
         left2 = ls * ls * ps;
         s = (*S)[r+1];
         ls = log(s);
-        ps = pow(s, expEta);
+        ps = R_pow(s, expEta);
         if(s <= 0) { right = 0; right2 = 0;}
         else       { right = ls * ps; right2 = ls * ls * ps; }
         dl_dmu[i] = (left - right)/pob;
@@ -777,49 +800,50 @@ void covar_d_analytic(Eigen::VectorXd &d1, Eigen::MatrixXd &dmat, ICPH_OptimInfo
     }
 }
 
-
-
-double covar_d(int i, ICPH_OptimInfo &optinfo){
-    double lk0 = icph_llk_sumOnly(optinfo);
-    double h = optinfo.h;
-    optinfo.betas[i] += h;
+double uni_cov_step(int i, double d1, ICPH_OptimInfo &optinfo){
+    double delta = signVal(d1) * 0.05;
+    
+    int tries = 0;
+    int maxTries = 10;
+    
+    double lk0 = icph_llk_keepEta(optinfo);
+    optinfo.betas[i] += delta;
     update_etas(optinfo);
-    double lkNew = icph_llk_sumOnly(optinfo);
-    optinfo.betas[i] -= h;
-    update_etas(optinfo);
-    return( (lkNew - lk0)/h);
+    
+    double newlk = icph_llk_keepEta(optinfo);
+    while(tries < maxTries && newlk < lk0){
+        tries++;
+        optinfo.betas[i] -= delta;
+        delta *= 0.25;
+        optinfo.betas[i] += delta;
+        update_etas(optinfo);
+        newlk = icph_llk_keepEta(optinfo);
+    }
+    
+    if(newlk <lk0){
+        optinfo.betas[i] -= delta;
+        delta = -signVal(d1) * 0.1;
+        tries = 0;
+        maxTries = 10;
+        
+        optinfo.betas[i] += delta;
+        newlk = icph_llk_keepEta(optinfo);
+        while(tries < maxTries && newlk < lk0){
+            tries++;
+            optinfo.betas[i] -= delta;
+            delta *= 0.25;
+            optinfo.betas[i] += delta;
+            update_etas(optinfo);
+            newlk = icph_llk_keepEta(optinfo);
+        }
+    }
+//    Rprintf("used uni covar, change (*10^5) = %f \n", (newlk - lk0) * pow(10, 5));
+    return(newlk - lk0);
 }
 
-double covar_dd(int i, int j, ICPH_OptimInfo &optinfo){
-    double h = optinfo.h;
-    
-    optinfo.betas[i] += h;
-    optinfo.betas[j] += h;
-    update_etas(optinfo);
-    double llk_hh = icph_llk_sumOnly(optinfo);
-
-    optinfo.betas[i] -= 2*h;
-    update_etas(optinfo);
-    double llk_lh = icph_llk_sumOnly(optinfo);
-
-    optinfo.betas[j] -= 2*h;
-    update_etas(optinfo);
-    double llk_ll = icph_llk_sumOnly(optinfo);
-
-    optinfo.betas[i] += 2*h;
-    update_etas(optinfo);
-    double llk_hl = icph_llk_sumOnly(optinfo);
-    
-    optinfo.betas[i] -= h;
-    optinfo.betas[j] += h;
-    update_etas(optinfo);
-
-    double output = (llk_hh + llk_ll - llk_hl - llk_lh)/ (4 * h * h);
-    return(output);
-}
 
 void updateCovars(ICPH_OptimInfo &optinfo){
-    double llk_old = icph_llk_sumOnly(optinfo);
+    double llk_old = icph_llk_keepEta(optinfo);
     int k = optinfo.betas.size();
 /*    for(int i = 0; i < k; i++)
         optinfo.d_cov[i] = covar_d(i, optinfo); */
@@ -828,28 +852,18 @@ void updateCovars(ICPH_OptimInfo &optinfo){
     Eigen::MatrixXd d_mat_test(k, k);
     covar_d_analytic(optinfo.d_cov, optinfo.d2_mat, optinfo);
     
-/*    for(int i = 0; i < k; i++){
-        for(int j = 0; j < k; j++)
-            optinfo.d2_mat(i,j) = covar_dd(i, j, optinfo);
-    }
-
-    for(int i = 0; i < k; i++){
-        Rprintf(" %f ,   ", d_cov_test[i] - optinfo.d_cov[i]);
-        for(int j = 0; j < k; j++)
-            Rprintf("%f ", optinfo.d2_mat(i,j) - d_mat_test(i,j));
-        Rprintf("\n");
-    }   */
-    
-    
     
     optinfo.propVec = -optinfo.d2_mat.inverse() * optinfo.d_cov;
+    for(int i = 0; i < optinfo.propVec.size(); i++){
+        if(isnan(optinfo.propVec[i])) { Rprintf("quiting reg step!\n"); return; }
+    }
     optinfo.betas += optinfo.propVec;
     
     update_etas(optinfo);
-    double llk_new = icph_llk_sumOnly(optinfo);
+    double llk_new = icph_llk_keepEta(optinfo);
     
     int tries = 0;
-    optinfo.propVec *= -1;
+    optinfo.propVec *= -1.0;
     bool lk_bad = false;
     if(isnan(llk_new)) lk_bad = true;
     else if(llk_new < llk_old) lk_bad = true;
@@ -859,7 +873,7 @@ void updateCovars(ICPH_OptimInfo &optinfo){
         optinfo.propVec *= 0.5;
         optinfo.betas += optinfo.propVec;
         update_etas(optinfo);
-        llk_new = icph_llk_sumOnly(optinfo);
+        llk_new = icph_llk_keepEta(optinfo);
         lk_bad = false;
         if(isnan(llk_new)) lk_bad = true;
         else if(llk_new < llk_old) lk_bad = true;
@@ -868,9 +882,15 @@ void updateCovars(ICPH_OptimInfo &optinfo){
     if(lk_bad){
         optinfo.betas += optinfo.propVec;
         update_etas(optinfo);
-        llk_new = icph_llk_sumOnly(optinfo);
+        llk_new = icph_llk_keepEta(optinfo);
+        double uni_dlta;
+        for(int i = 0; i < k; i++){
+            uni_dlta = uni_cov_step(i, optinfo.d_cov[i], optinfo);
+            if(uni_dlta > 0.00000001) {llk_new += uni_dlta; }//break;}
+            else if (uni_dlta < -0.00000001) Rprintf("warning: likelihood decreased in uni_dlta step!\n");
+        }
     }
-//    Rprintf("in update Covars, change in llk = %f, tries %d\n", llk_new - llk_old, tries);
+ //   Rprintf("Change in llk in updateCovars = %f\n", llk_new - llk_old);
 }
 
 
@@ -883,19 +903,53 @@ SEXP test_nne(SEXP Rp_mass, SEXP Rlind, SEXP Rrind, SEXP Rcovars){
     for(int i = 0; i < k; i++) optObj.S[i+1] = optObj.S[i] - optObj.p_mass[i];
     for(int i = 0; i < n; i++){ update_p_ob(i, optObj); }
     double llk_old = R_NegInf;
-    double llk_new = icph_llk_sumOnly(optObj);
+    double llk_new = icph_llk_keepEta(optObj);
     int tries = 0;
-    while(tries < 500 && llk_new - llk_old > 0.0000001) {
-        tries++;
-        llk_old = llk_new;
-        for(int i = 0; i < 2; i++)
-            updateCovars(optObj);
-        ICM_step(optObj);
-        NNE_all(optObj);
-        for(int j = 0; j < 2; j++)vem_update(optObj);
-        llk_new = icph_llk_sumOnly(optObj);
-    }
+    double conv_crit = R_pow(10, -10);
     
+    while(tries < 500 && llk_new - llk_old > conv_crit) {
+        
+        llk_old = llk_new;
+        tries++;
+        
+        NNE_all(optObj);
+      
+/*        llk_new = icph_llk_keepEta(optObj);
+        Rprintf("(NNE)change in llk = %f\n", llk_new - llk_old);
+            */
+        
+        vem_update(optObj, true);
+
+/*        llk_new = icph_llk_keepEta(optObj);
+        Rprintf("(VEM)change in llk = %f\n", llk_new - llk_old);    */
+
+        
+        ICM_step(optObj);
+
+/*        llk_new = icph_llk_keepEta(optObj);
+        Rprintf("(ICM)change in llk = %f\n", llk_new - llk_old);    */
+
+        updateCovars(optObj);
+        
+/*        llk_new = icph_llk_keepEta(optObj);
+        Rprintf("(REG)change in llk = %f\n", llk_new - llk_old);    */
+
+        vem_update(optObj, false);
+
+/*        llk_new = icph_llk_keepEta(optObj);
+        Rprintf("(VEM)change in llk = %f\n", llk_new - llk_old);    */
+
+        
+        NNE_all(optObj);
+
+ /*       llk_new = icph_llk_keepEta(optObj);
+        Rprintf("(NNE)change in llk = %f\n", llk_new - llk_old);    */
+
+        
+        updateCovars(optObj);
+        llk_new = icph_llk_keepEta(optObj);
+        
+    }
     SEXP ans = PROTECT(allocVector(VECSXP, 5));
     SEXP R_pans = PROTECT(allocVector(REALSXP,k));
     SEXP R_coef = PROTECT(allocVector(REALSXP, optObj.betas.size()));
@@ -979,6 +1033,7 @@ SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals){
     return(ans);
 }
 
+/*
 SEXP findLR_ind(SEXP lVal, SEXP rVal, SEXP MI_l, SEXP MI_r){
     int n = LENGTH(lVal);
     SEXP l = PROTECT(allocVector(INTSXP, n));
@@ -1009,4 +1064,4 @@ SEXP findLR_ind(SEXP lVal, SEXP rVal, SEXP MI_l, SEXP MI_r){
     SET_VECTOR_ELT(ans, 1, r);
     UNPROTECT(3);
     return(ans);
-}
+}   */

@@ -2,7 +2,9 @@
 \alias{simICPH_beta}
 \title{Simulates interval censored data from Cox-PH model with beta baseline}
 \usage{
-  simICPH_beta(n = 100, b1 = 0.5, b2 = -0.5, inspections = 1, shape1 = 2, shape2 = 2)
+  simICPH_beta(n = 100, b1 = 0.5, b2 = -0.5, 
+               inspections = 1, shape1 = 2, shape2 = 2,
+               rndDigits = NULL)
 }
 \arguments{
   \item{n}{Number of samples simulated}
@@ -11,14 +13,15 @@
   \item{inspections}{Number of inspections of data. inspections = 1 implies current status data}
   \item{shape1}{Shape1 parameter of baseline beta distribution}
   \item{shape2}{Shape2 parameter of baseline beta distribution}
+  \item{rndDigits}{number of digits to which the inspection time is rounded to, creating a discrete inspection time. If \code{rndDigits = NULL}, the inspection time is not rounded, resulting in a continuous inspection time}
 }
 \description{
   
-  Simulates interval censored data from a Cox-PH model with a beta baseline distribution. Used for demonstration.}
+  Simulates interval censored data from a Cox-PH model with a beta baseline distribution. Used for demonstration}
 \examples{
 	set.seed(0)
 
-	sim_data <- simICPH_beta(n = 1000)
+	sim_data <- simICPH_beta(n = 500)
 	#simulates data from a cox-ph with beta baseline distribution.
 	#default inspections = 1 results in current status data
 	
@@ -34,7 +37,7 @@
 	#Heavy bias from grossly inapporiate assumption of baseline for imputations 
 	#(true baseline = beta, baseline used for imputations = Weibull)
 
-	sim_data_fine <- simICPH_beta(n = 1000, inspections = 20)	
+	sim_data_fine <- simICPH_beta(n = 500, inspections = 20)	
 	#Now there are more inspections
 	#The fact that imputed values are restrained to narrow intervals downplays the 
 	#negative influence of the Weibull imputation assumption

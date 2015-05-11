@@ -1,10 +1,12 @@
-df059a5bb14f0e807e47534aab045f7b *DESCRIPTION
-9fccc1d7f64852081c98c6f272fd2086 *NAMESPACE
-ab9e778c6db99012a50b4f3eb04f188e *R/coxph.R
+23d755c0adbe2c886c35432a5521a1e7 *DESCRIPTION
+511f21a3acd6654203148b236fcc7802 *NAMESPACE
+e491ba4dd0f6638d4538eee7b43f6a09 *R/coxph.R
+fb3a46ff78e80c23eb5b219fa144e624 *data/mdata.RData
 c9adc24a466b6870782665b802a6f515 *man/getSCurves.Rd
-1b2ebb6fffc5e477ce632f334158c26d *man/ic_ph.Rd
-dd4e88cc73c165653b25098652a9ae2e *man/impute_ic_ph.Rd
-6e6fe8adf4cf5ebf8eccd6bea437042f *man/simICPH_beta.Rd
+de99ae66bd4e889e5cbcf9e335b58db6 *man/ic_ph.Rd
+2cdb5373838b46730acbb44730d1fecb *man/impute_ic_ph.Rd
+bdd2e4fcfb974aecf7d6c7f506bbdde5 *man/mdata.Rd
+23970ed6f95c01d5b035fa0475bf95cc *man/simICPH_beta.Rd
 fa5316eb01fca98c95b06f387528371c *src/Eigen_local/Array
 8356f203720db32a51ace30ea0c5222a *src/Eigen_local/CMakeLists.txt
 cab478a04db5276e45971c6a605db842 *src/Eigen_local/Cholesky
@@ -329,5 +331,5 @@ cbd65be692bfa660e5c49b7f72cb923a *src/Eigen_local/src/plugins/CommonCwiseBinaryO
 700240826de57d08f778e0e5daa7a22e *src/Eigen_local/src/plugins/CommonCwiseUnaryOps.h
 54bcd33c164460e7cee20f4d2575b8fe *src/Eigen_local/src/plugins/MatrixCwiseBinaryOps.h
 17b3c347113258e434b8ac42b2f3d49d *src/Eigen_local/src/plugins/MatrixCwiseUnaryOps.h
-d981cea6fbbde6ecf0e08e2b1ff088ec *src/icenReg.cpp
-aff3a38f086ac7eb1c50a57561f0fff7 *src/intCoxFast.h
+c63f709e87b910f53c101ba5451d4377 *src/icenReg.cpp
+ba3864f8e072006537bb7372b2b93093 *src/intCoxFast.h
