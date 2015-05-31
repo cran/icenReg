@@ -13,12 +13,12 @@
   \item{eta}{0 offset. See details}
   \item{rightCenVal}{Value to be used for right side of right censored data}
   \item{seed}{seed for random number generator. If \code{seed == NULL}, a random seed is still used. See details}
-  \item{useMCores}{Should multiple cores be used for imputation? See \code{?ic_ph} for example of how to set up}
+  \item{useMCores}{Should multiple cores be used for imputation? See \code{?ic_sp} for example of how to set up}
 }
 \description{
 	Analyzes interval censored data via multiple imputation. In particular, it first fits a fully parametric model with an Weibull baseline distribution (via \code{survival}'s \code{survreg} function). Then, it uses this model to impute the exact times for each censored interval. These imputed datasets are then fit with a semi-parametric model (via \code{survival}'s \code{coxph} function). 
 	
-	In general, it is much better to use the \code{ic_ph} function. However, for very large datasets, this may be considerably faster. And if the length of the intervals is relatively small, then the estimators should agree heavily with each other. However, for data with larger intervals, such as current status data, the assumption of a Weibull baseline distribution can be influential. See examples for demonstration. 
+	In general, it is much better to use the \code{ic_sp} function. However, for very large datasets, this may be considerably faster. And if the length of the intervals is relatively small, then the estimators should agree heavily with each other. However, for data with larger intervals, such as current status data, the assumption of a Weibull baseline distribution can be influential. See examples for demonstration. 
 }
 \details{The survival function \code{survreg}, which impute_ic_ph uses for the imputation model, does not allow for intervals to start with 0, nor intervals that end with Inf. \code{impute_ic_ph} adds \code{eta} to left censored data to prevent this from being an issue and replaces the right hand side of an interval that ends with \code{Inf} with \code{rightCenVal}.
 	
@@ -27,12 +27,12 @@
 \examples{
 	set.seed(0)
 
-	sim_data <- simICPH_beta(n = 500)
+	sim_data <- simICPH_beta(n = 200)
 	#simulates data from a cox-ph with beta baseline distribution.
 	#default inspections = 1 results in current status data
 	
 	
-	fit <- ic_ph(Surv(l, u, type = 'interval2') ~ x1 + x2, data = sim_data)	
+	fit <- ic_sp(Surv(l, u, type = 'interval2') ~ x1 + x2, data = sim_data)	
 	summary(fit)		
 	#Analyzing with semi-parametric model
 	#Regression estimates close to true 0.5 and -0.5 values
@@ -43,7 +43,7 @@
 	#Heavy bias from grossly inapporiate assumption of baseline for imputations 
 	#(true baseline = beta, baseline used for imputations = Weibull)
 
-	sim_data_fine <- simICPH_beta(n = 500, inspections = 20)	
+	sim_data_fine <- simICPH_beta(n = 200, inspections = 20)	
 	#Now there are more inspections
 	#The fact that imputed values are restrained to narrow intervals downplays the 
 	#negative influence of the Weibull imputation assumption

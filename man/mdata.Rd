@@ -14,7 +14,7 @@
 \examples{
 	data(mdata)
 	
-	coxph_fit <- ic_ph(Surv(l, u, type = 'interval2') ~ grp, data = mdata)
+	coxph_fit <- ic_sp(Surv(l, u, type = 'interval2') ~ grp, data = mdata)
 	
 	summary(coxph_fit)
 }

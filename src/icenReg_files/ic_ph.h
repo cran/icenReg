@@ -6,15 +6,15 @@
 //
 //
 
-#ifndef _intCoxFast_h
-#define _intCoxFast_h
+#ifndef _ic_ph_h
+#define _ic_ph_h
 
-#include "Eigen_local/Dense"
+/*#include "Eigen_local/Dense"
 #include <stdio.h>
 #include <vector>
 #include <R.h>
 #include <Rinternals.h>
-#include <Rmath.h>
+#include <Rmath.h>  */
 using namespace std;
 
 
@@ -117,8 +117,8 @@ void analyticDerv_VEM(vector<int> &minmax, vector<double> &output_dervs, ICPH_Op
 void vem_update(ICPH_OptimInfo &optinfo, bool recPosd);
 // VEM update
 
-double max(double a, double b);
-double min(double a, double b);
+//double max(double a, double b);
+//double min(double a, double b);
 
 void vec_delta(vector<double> &delta, ICPH_OptimInfo &optinfo);
 // This alters p_mass by delta and updates S and p_mass
@@ -143,16 +143,27 @@ void updateCovars(ICPH_OptimInfo &optinfo);
 
 
 
-double signVal(double x){
+/*double signVal(double x){
     if(x > 0) return 1.0;
     return -1.0;
-}
+}*/
+
+SEXP ic_ph(SEXP Rp_mass, SEXP Rlind, SEXP Rrind, SEXP Rcovars);
 
 extern "C" {
     
 //    SEXP test_icph_llk(SEXP S, SEXP expEta, SEXP lind, SEXP rind);
-    SEXP test_nne(SEXP Rp_mass, SEXP Rlind, SEXP Rrind, SEXP Rcovars);
+    SEXP ic_sp(SEXP Rp_mass, SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fType);
     SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals);
 //    SEXP findLR_ind(SEXP lVal, SEXP rVal, SEXP MI_l, SEXP MI_r);
 }
+
+
+
+
+
+
 #endif
+
+
+
