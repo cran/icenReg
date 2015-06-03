@@ -90,7 +90,8 @@ double ic_ploglogistic(double x, double a, double b){
 double ic_dlnorm(double x, double mu, double s){
     double denom = x * s * sqrt(2 * PI);
     double expPart = pow((log(x) - mu), 2) / (2 * s * s);
-    return (exp(-expPart) / denom);
+    double ans = exp(-expPart) / denom;
+    return (ans);
 }
 
 double ic_plnorm(double x, double mu, double s){

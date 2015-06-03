@@ -48,6 +48,16 @@ void actSet_Abst::update_etas(){
         expEtas[i] = exp(etas[i]);
 }
 
+void cumhaz2p_hat(Eigen::VectorXd &ch, vector<double> &p){
+    int k = ch.size();
+    vector<double> S(k);
+    p.resize(k-1);
+    for(int i = 0; i < k; i++)
+        S[i] = exp(-exp(ch[i]));
+    
+    for(int i = 0; i < (k-1); i++)
+        p[i] = S[i+1] - S[i];
+}
 
 /*      ACTIVE SET MANIPULATION TOOLS       */
 int actSet_Abst::getNextRawActInd(int act_i){
@@ -182,6 +192,7 @@ int actSet_Abst::getActInd(int raw_ind){
 
 void actSet_Abst::checkIfActShouldDrop(int act_ind){
     if(act_ind == 0) return;
+    if(act_ind >= actIndex.size() ) return;
     double thispar = actIndex[act_ind].par;
     double lowerpar = actIndex[act_ind-1].par;
     if( abs(thispar -lowerpar) < pow(10, -12))   removeActive(act_ind);
@@ -206,8 +217,9 @@ void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, actSet_Abst* actSet){
     actSet->expEtas.resize(n);
     
     for(int i = 0; i < n; i++){
-        actSet->etas[i] = 0;
-        actSet->expEtas[i] = 1;
+        actSet->etas[i]       = 0;
+        actSet->expEtas[i]    = 1;
+        actSet->base_p_obs[i] = 0;
     }
     
     copyRmatrix_intoEigen(RCovars, actSet->covars);
@@ -219,6 +231,8 @@ void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, actSet_Abst* actSet){
     actSet->reg_d1.resize(reg_k);
     actSet->reg_d2.resize(reg_k, reg_k);
     actSet->reg_par.resize(reg_k);
+    for(int i = 0; i < reg_k; i++)  actSet->reg_par[i] = 0;
+    
     
     int maxInd = 0;
     for(int i = 0; i < n; i++){
@@ -228,7 +242,7 @@ void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, actSet_Abst* actSet){
     
 
     actSet->baseCH.resize(maxInd + 2);
-    for(int i = 0; i < maxInd; i++)
+    for(int i = 0; i <= maxInd; i++)
         actSet->baseCH[i] = R_NegInf;
     actSet->baseCH[maxInd+1] = R_PosInf;
     
@@ -277,6 +291,8 @@ void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, actSet_Abst* actSet){
 /*      OPTIMIZATION TOOLS      */
 void actSet_Abst::numericBaseDervsOne(int raw_ind, vector<double> &dvec){
     dvec.resize(2);
+    dvec[0] = 0;
+    dvec[1] = 0;
     if(raw_ind <= 0 || raw_ind >= (baseCH.size()- 1)){Rprintf("warning: inappropriate choice of ind for numericBaseDervs ind = %d\n", raw_ind); return;}
 
     bool needToDropWhenDone = getActInd(raw_ind) == -1;
@@ -374,21 +390,25 @@ void actSet_Abst::uniActiveOptim(int raw_ind){
     int act_ind = getActInd(raw_ind);
     vector<double> dv(2);
     numericBaseDervsOne(raw_ind, dv);
+    
     double upperLim = R_PosInf;
     double lowerLim = R_NegInf;
     double curVal = actIndex[act_ind].par;
     if(act_ind > 0)                     lowerLim = actIndex[act_ind-1].par - curVal;
     if(act_ind < actIndex.size() - 1)   upperLim = actIndex[act_ind+1].par - curVal;
     double prop = 0;
-    if(isnan(dv[0] || isnan(dv[1] || dv[0] == R_NegInf || dv[0] == R_PosInf || dv[1] == R_NegInf || dv[1] == R_PosInf))) {Rprintf("error: degenerate derivative estimated! quiting uniActiveOptim\n");}
+    if(isnan(dv[0]) || isnan(dv[1]) || dv[0] == R_NegInf || dv[0] == R_PosInf || dv[1] == R_NegInf || dv[1] == R_PosInf){
+        Rprintf("error: degenerate derivative estimated! quiting uniActiveOptim\n");
+        return;
+    }
     if(dv[1] < -.00001){
         prop = -dv[0]/dv[1];
     }
     
     else    prop = dv[0];
-    
     prop = max(prop, lowerLim);
     prop = min(prop, upperLim);
+    
     double llk_st = par_llk(act_ind);
     act_addPar(act_ind, prop);
     double llk_nw = par_llk(act_ind);
@@ -411,6 +431,7 @@ void actSet_Abst::uniActiveOptim(int raw_ind){
     }
     
     prop = -prop;
+    
     checkIfActShouldDrop(act_ind);
     checkIfActShouldDrop(act_ind+1);
 }
@@ -572,7 +593,7 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType){
         }
 
  
-    if(llk_new < llk_old){
+    if((llk_new - llk_old) < -0.00001 ){
         Rprintf("warning: likelihood decreased! difference = %f\n", llk_new - llk_old);
     }
     
@@ -602,18 +623,75 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType){
     SET_VECTOR_ELT(ans, 4, R_score);
     
     UNPROTECT(6);
+    
+    if(INTEGER(fitType)[0] == 1){
+        actSet_ph* deleteObj = static_cast<actSet_ph*>(optObj);
+        delete deleteObj;
+    }
+    else if(INTEGER(fitType)[0] == 2){
+        actSet_po* deleteObj = static_cast<actSet_po*>(optObj);
+        delete deleteObj;
+    }
+    
     return(ans);
 
 }
 
 
-void cumhaz2p_hat(Eigen::VectorXd &ch, vector<double> &p){
-    int k = ch.size();
-    vector<double> S(k);
-    p.resize(k-1);
-    for(int i = 0; i < k; i++)
-        S[i] = exp(-exp(ch[i]));
+/*      GETTING MAXIMAL INTERSECTIONS       */
+
+SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals){
+    //NOTE: R_AllVals MUST be sorted!!
+    int k = LENGTH(R_AllVals);
+    vector<double> mi_l;
+    vector<double> mi_r;
     
-    for(int i = 0; i < (k-1); i++)
-        p[i] = S[i+1] - S[i];
+    bool foundLeft = false;
+    double last_left = R_NegInf;
+    for(int i = 0; i < k; i++){
+        if(!foundLeft)                      foundLeft = LOGICAL(isL)[i] == TRUE;
+        if(LOGICAL(isL)[i] == TRUE)         last_left = REAL(R_AllVals)[i];
+        if(foundLeft){
+            if(LOGICAL(isR)[i] == TRUE){
+                mi_l.push_back(last_left);
+                mi_r.push_back(REAL(R_AllVals)[i]);
+                foundLeft = false;
+            }
+        }
+    }
+    int tbulls = mi_l.size();
+    
+    int n = LENGTH(lVals);
+    SEXP l_ind = PROTECT(allocVector(INTSXP, n));
+    SEXP r_ind = PROTECT(allocVector(INTSXP, n));
+    for(int i = 0; i < n; i++){
+        for(int j = 0; j < tbulls; j++){
+            if(mi_l[j] >= REAL(lVals)[i]){
+                INTEGER(l_ind)[i] = j;
+                break;
+            }
+        }
+        
+        for(int j = tbulls-1; j >= 0; j--){
+            if(mi_r[j] <= REAL(rVals)[i]){
+                INTEGER(r_ind)[i] = j;
+                break;
+            }
+        }
+    }
+    
+    
+    SEXP ans = PROTECT(allocVector(VECSXP, 4));
+    SEXP Rl_mi = PROTECT(allocVector(REALSXP, tbulls));
+    SEXP Rr_mi = PROTECT(allocVector(REALSXP, tbulls));
+    for(int i = 0; i < tbulls; i++){
+        REAL(Rl_mi)[i] = mi_l[i];
+        REAL(Rr_mi)[i] = mi_r[i];
+    }
+    SET_VECTOR_ELT(ans, 0, l_ind);
+    SET_VECTOR_ELT(ans, 1, r_ind);
+    SET_VECTOR_ELT(ans, 2, Rl_mi);
+    SET_VECTOR_ELT(ans, 3, Rr_mi);
+    UNPROTECT(5);
+    return(ans);
 }

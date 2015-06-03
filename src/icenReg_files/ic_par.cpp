@@ -10,13 +10,19 @@
 
 double IC_parOpt::calcLike_baseReady(){
     double ans = 0;
-    for(int i = 0; i < uc.size(); i++){ ans += log(lnkFn->con_d(d_v[uc[i].d], s_v[uc[i].s], expEta[uc[i].nu]));}
+    for(int i = 0; i < uc.size(); i++){
+        ans += log(lnkFn->con_d(d_v[uc[i].d], s_v[uc[i].s], expEta[uc[i].nu]));
+    }
     for(int i = 0; i < gic.size(); i++){
         ans += log(lnkFn->con_s(s_v[gic[i].l], expEta[gic[i].nu])
                    -lnkFn->con_s(s_v[gic[i].r], expEta[gic[i].nu]) );
     }
-    for(int i = 0; i < lc.size(); i++){ ans += log(1.0 - lnkFn->con_s(s_v[lc[i].r], expEta[lc[i].nu]));}
-    for(int i = 0; i < rc.size(); i++){ ans += log(lnkFn->con_s(s_v[rc[i].l], expEta[rc[i].nu])); }
+    for(int i = 0; i < lc.size(); i++){
+        ans += log(1.0 - lnkFn->con_s(s_v[lc[i].r], expEta[lc[i].nu]));
+    }
+    for(int i = 0; i < rc.size(); i++){
+        ans += log(lnkFn->con_s(s_v[rc[i].l], expEta[rc[i].nu]));
+    }
     if(isnan(ans)) ans = R_NegInf;
     return(ans);
 }
@@ -329,14 +335,14 @@ IC_parOpt::IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
     copyRmatrix_intoEigen(R_covars, covars);
     int k = covars.cols();
     betas.resize(k);
+    for(int i = 0; i < k; i++)  betas[i] = 0;
     d_betas.resize(k);
     d2_betas.resize(k, k);
     
     SEXP RuncenDim = getAttrib(R_uncenInd, R_DimSymbol);
     PROTECT(RuncenDim);
     SEXP RgicDim = getAttrib(R_gicInd, R_DimSymbol);
-    PROTECT(RuncenDim);
-    UNPROTECT(2);
+    PROTECT(RgicDim);
     
     int n_1 = INTEGER(RuncenDim)[0];
     int n_2 = INTEGER(RgicDim)[0];
@@ -378,6 +384,7 @@ IC_parOpt::IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
     }
     
     h = 0.0001;
+    UNPROTECT(2);
 }
 
 
@@ -459,5 +466,34 @@ SEXP ic_par(SEXP R_s_t, SEXP R_d_t, SEXP covars,
     SET_VECTOR_ELT(ans, 4, outHessian);
     SET_VECTOR_ELT(ans, 5, score);
     UNPROTECT(6);
+    
+    if(INTEGER(parType)[0] == 1){
+        gammaInfo* deleteObj = static_cast<gammaInfo*>(optObj.blInf);
+        delete deleteObj;
+    }
+    if(INTEGER(parType)[0] == 2){
+        weibullInfo* deleteObj = static_cast<weibullInfo*>(optObj.blInf);
+        delete deleteObj;
+    }
+    if(INTEGER(parType)[0] == 3){
+        lnormInfo* deleteObj = static_cast<lnormInfo*>(optObj.blInf);
+        delete deleteObj;
+    }
+    if(INTEGER(parType)[0] == 4){
+        expInfo* deleteObj = static_cast<expInfo*>(optObj.blInf);
+        delete deleteObj;
+    }
+    if(INTEGER(parType)[0] == 5){
+        loglogisticInfo* deleteObj = static_cast<loglogisticInfo*>(optObj.blInf);
+        delete deleteObj;
+    }
+    if(INTEGER(linkType)[0] == 1){
+        propOdd* deleteObj = static_cast<propOdd*>(optObj.lnkFn);
+        delete deleteObj;
+    }
+    if(INTEGER(linkType)[0] == 2){
+        propHaz* deleteObj = static_cast<propHaz*>(optObj.lnkFn);
+        delete deleteObj;
+    }
     return(ans);
 }

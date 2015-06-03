@@ -401,7 +401,7 @@ get_tbull_mid_q <- function(p, s_t, tbulls){
 	
 	for(i in 1:length(p)){
 		this_p <- p[i]
-		if(this_p < 0 | this_p > 1)	stop('attempting to find survival quantile forinvalid probability')	
+		if(this_p < 0 | this_p > 1)	stop('attempting to find survival quantile for invalid probability')	
 		if(this_p == 0)			ans[i] <- x_range[1]
 		else if(this_p == 1) 	ans[i] <- x_range[2]
 		else{
@@ -414,9 +414,10 @@ get_tbull_mid_q <- function(p, s_t, tbulls){
 			
 			this_q_low <- x_low[s_ind]
 			this_q_hi  <- x_hi[s_ind]
-			
-			ans[i] <- this_q_hi + (this_q_low - this_q_hi) * s_res/s_jump
-			
+			if(s_jump > 0)
+				ans[i] <- this_q_hi + (this_q_low - this_q_hi) * s_res/s_jump
+			else
+				ans[i] <- this_q_hi		
 		}
 	}
 	return(ans)
@@ -432,7 +433,7 @@ get_tbull_mid_p <- function(q, s_t, tbulls){
 	
 	max_x_low 	<- max(x_low)
 	min_x_hi 	<- min(x_hi)
-	
+		
 	for(i in 1:length(q)){
 		this_q <- q[i]
 		if(this_q <= x_range[1]) 			ans[i] <- 0
@@ -447,9 +448,16 @@ get_tbull_mid_p <- function(q, s_t, tbulls){
 						}
 			else{
 				p_jump <- s_t[u_ind] - s_t[l_ind]
-				int_lng <- x_low[l_ind] - x_low[u_ind]
-				q_res <- this_q - x_low[l_ind]
-				ans[i] <- 1 - s_t[u_ind] + p_jump * q_res/int_lng	
+				int_lng <- x_hi[l_ind] - x_low[u_ind]
+				q_res <- this_q - x_low[u_ind]
+								
+				if(int_lng > 0)
+					ans[i] <- 1 - (s_t[u_ind] - p_jump * q_res/int_lng)	
+				else
+					ans[i] <- 1 - (s_t[u_ind] - p_jump)
+												
+				if(ans[i] < 0 | ans[i] > 1) browser()								
+														
 			}
 		}
 	}

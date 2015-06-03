@@ -8,7 +8,7 @@ diag_covar(object, varName,
            factorSplit = TRUE, 
            numericCuts, col, 
            xlab, ylab, main, 
-           max_n_use = 5000) }
+           max_n_use = 10000) }
 \arguments{
   \item{object}{Either a formula or a model fit with \code{ic_sp} or \code{ic_par}}
   \item{varName}{covariate to split data on. If left blank, will split on each covariate}
@@ -38,11 +38,10 @@ If \code{varName} is not provided, will attempt to figure out how to divide up e
 	
 	For variables that are factors, it will create a strata for each level of the covariate, up to 20 levels. If \code{factorSplit == FALSE}, will divide up numeric covariates according to the cuts provided to numericCuts. 
 	
-	For larger datasets (n > 2,000), the semi-parametric model can be quite slow. Because of this, \code{diag_covar} allows the user to select \code{max_n_use} samples from their data to assess the fit of their models. 
+	For larger datasets (n > 10,000), the semi-parametric model can become slow. Because of this, \code{diag_covar} allows the user to select \code{max_n_use} samples from their data to assess the fit of their models. 
 }
 \examples{
 	# Not run: requires data from the straweib library. 
-	# Also takes about half a minute to run
 	
 	# library(straweib)
 	# data(tooth24)

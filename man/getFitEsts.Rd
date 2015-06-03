@@ -17,18 +17,19 @@
 	 	
  	For \code{ic_par} fits, it is worth noting that F^{-1}(p | x) is approximated using R's \code{optimize} function, so there may be some numerical error. 
  	
- 	In the case of \code{ic_sp}, the MLE of the baseline survival is not necessarily unique, as probability mass is assigned to disjoint Turnbull intervals, but the likelihood function is indifferent to how probability mass is assigned within these intervals. In order to have a well defined estimate return, we assume probability is assigned uniformly in these intervals. In otherwords, we return *a* maximum likelihood estimate, but don't attempt to characterize *all* maximum likelihood estimates with this function. If that is desired, all the information needed can be extracted with \code{getSCurves}. 
+ 	In the case of \code{ic_sp}, the MLE of the baseline survival is not necessarily unique, as probability mass is assigned to disjoint Turnbull intervals, but the likelihood function is indifferent to how probability mass is assigned within these intervals. In order to have a well defined estimate returned, we assume probability is assigned uniformly in these intervals. In otherwords, we return *a* maximum likelihood estimate, but don't attempt to characterize *all* maximum likelihood estimates with this function. If that is desired, all the information needed can be extracted with \code{getSCurves}. 
  	 }
 \examples{
-	data(mdata)
-	miceFit <- ic_par(Surv(l, u, type = 'interval2') ~ grp, data = mdata)
+	simdata <- simIC_weib(n = 500, b1 = .3, b2 = -.3,
+                         inspections = 6, inspectLength = 1)
+	fit <- ic_par(Surv(l, u, type = 'interval2') ~ x1 + x2,
+                  data = simdata)
+	new_data <- data.frame(x1 = c(1,2), x2 = c(-1,1))
+	rownames(new_data) <- c('grp1', 'grp2')
 	
-	ps = c(0.25, .5, .75)
-	newdata <- data.frame(grp = c('ce', 'ge'))
+	estQ <- getFitEsts(fit, new_data, p = c(.25, .5, .75))
 	
-	getFitEsts(miceFit, newdata = newdata, p = ps)
-	
-	getFitEsts(miceFit, q = 400)
+	estP <- getFitEsts(fit, q = 400)
 }
 \author{
   Clifford Anderson-Bergman

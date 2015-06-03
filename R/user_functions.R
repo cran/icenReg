@@ -478,7 +478,7 @@ diag_covar <- function(object, varName,
            factorSplit = TRUE, 
            numericCuts, col, 
            xlab, ylab, main, 
-           max_n_use = 5000){
+           max_n_use = 10000){
 
 	fullFormula <- getFormula(object)
 	if(missing(model)) model <- object$model
@@ -570,6 +570,7 @@ diag_covar <- function(object, varName,
 	if(yType == 'meanRemovedTransform'){
 		ylab = paste('Mean Removed', ylab)
 	}
+		
 	for(i in seq_along(fitNames)){
 		if(yType == 'transform' | yType == 'survival'){
 			nm <- fitNames[i]
@@ -695,9 +696,11 @@ getFitEsts <-function(fit, newdata, p, q){
 		scurves <- getSCurves(fit, newdata)
 		ans <- matrix(nrow = length(xs), ncol = length(etas))
 		colnames(ans) <- names(scurves$S_curves)
+				
 		for(i in 1:length(etas)){
 			if(type == 'p') ans[,i] <- get_tbull_mid_q(xs, scurves[[2]][[i]], scurves[[1]])
 			else ans[,i] 			<- get_tbull_mid_p(xs, scurves[[2]][[i]], scurves[[1]])
+	
 		}
 		return(ans)
 	}
@@ -738,7 +741,7 @@ getFitEsts <-function(fit, newdata, p, q){
 
 diag_baseline <- function(object, data, model = 'ph',
 						  dists = c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic'),
-						  max_n_use = 5000, cols = NULL){
+						  max_n_use = 10000, cols = NULL){
 	formula <- getFormula(object)
 	if(missing(data))	data <- getData(object)
 

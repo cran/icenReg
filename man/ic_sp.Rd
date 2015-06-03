@@ -25,13 +25,13 @@
 \details{
 	It is very important to note that a random seed is *always* set if bs_samples > 0 (via \code{set.seed(seed)}), which can create problems in simulation studies if the same seed is set in every call to ic_sp during a simulation study. If \code{seed == NULL}, then the starting seed will be \code{round(runif(0, max = 10^8))}, which should be approximately equivalent to not setting a seed. 
 
-  For the baseline survival function, a combination of ICM, VEM and nearest neighbor exchange steps are used. For regression parameters, a simple Newton-Raphson step is used.
+  Likelihood function is maximized using an active set algorithm. 
 } 
   
 \examples{
 	set.seed(1)
 
-	sim_data <- simIC_weib(n = 200)
+	sim_data <- simIC_weib(n = 500, inspections = 5, inspectLength = 1)
 	ph_fit <- ic_sp(Surv(l, u, type = 'interval2') ~ x1 + x2, data = sim_data)	
 	# Default fits a Cox-PH model
 	
@@ -39,9 +39,9 @@
 	# Regression estimates close to true 0.5 and -0.5 values
 
 
-	newdata <- data.frame(x1 = c(0,1), x2 = c(1, 1) )
-	rownames(newdata) <- c('group 1', 'group 2')
-	plot(ph_fit, newdata)
+	new_data <- data.frame(x1 = c(0,1), x2 = c(1, 1) )
+	rownames(new_data) <- c('group 1', 'group 2')
+	plot(ph_fit, new_data)
 	# plotting the estimated survival curves
 
 	po_fit <- ic_sp(Surv(l, u, type = 'interval2') ~ x1 + x2, data = sim_data,

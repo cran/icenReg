@@ -25,6 +25,7 @@ public:
         double sqrt_denom = b_s * nu - b_s + 1;
         return( b_d * nu / (sqrt_denom * sqrt_denom));
     }
+    virtual ~propOdd(){};
 };
 
 class propHaz : public linkFun{
@@ -32,6 +33,7 @@ class propHaz : public linkFun{
 public:
     double con_s(double b_s, double nu) { return(pow(b_s, nu));}
     double con_d(double b_d, double b_s, double nu){return( b_d * nu * pow(b_s, nu -1));}
+    virtual ~propHaz(){};
 };
 
 
@@ -60,30 +62,35 @@ class gammaInfo : public parBLInfo{
 public:
     double base_d(double x, Eigen::VectorXd &par){return(dgamma(x, exp(par[0]), exp(par[1]), 0));}
     double base_s(double x, Eigen::VectorXd &par){return(pgamma(x, exp(par[0]), exp(par[1]), 0, 0));}
+    virtual ~gammaInfo(){};
 };
 
 class weibullInfo : public parBLInfo{
 public:
     double base_d(double x, Eigen::VectorXd &par){return(dweibull(x, exp(par[0]), exp(par[1]), 0));}
     double base_s(double x, Eigen::VectorXd &par){return(pweibull(x, exp(par[0]), exp(par[1]), 0, 0));}
+    virtual ~weibullInfo(){};
 };
 
 class lnormInfo : public parBLInfo{
 public:
     double base_d(double x, Eigen::VectorXd &par){return(ic_dlnorm(x, par[0], exp(par[1])));}
     double base_s(double x, Eigen::VectorXd &par){return(ic_plnorm(x, par[0], exp(par[1])));}
+    virtual ~lnormInfo(){};
 };
 
 class expInfo : public parBLInfo{
 public:
     double base_d(double x, Eigen::VectorXd &par){return(dexp(x, exp(par[0]), 0));}
     double base_s(double x, Eigen::VectorXd &par){return(pexp(x, exp(par[0]), 0, 0));}
+    virtual ~expInfo(){};
 };
 
 class loglogisticInfo : public parBLInfo{
 public:
     double base_d(double x, Eigen::VectorXd &par){return(ic_dloglogistic(x, exp(par[0]), exp(par[1])));}
     double base_s(double x, Eigen::VectorXd &par){return(1 - ic_ploglogistic(x, exp(par[0]), exp(par[1])));}
+    virtual ~loglogisticInfo(){};
 };
 
 
@@ -128,30 +135,30 @@ public:
     linkFun* lnkFn;
     // Information about link function
     
-    Eigen::VectorXd b_pars;
+    Eigen::VectorXd b_pars;                 //initialized
     //baseline distribution parameters
-    Eigen::VectorXd d_b_pars;
+    Eigen::VectorXd d_b_pars;               //does not need initialization
     //derivatives of baseline parameters
-    Eigen::MatrixXd d2_b_pars;
+    Eigen::MatrixXd d2_b_pars;              //does not need initialization
     //Hessian of baseline parameters
-    Eigen::VectorXd betas;
+    Eigen::VectorXd betas;                  //initialized
     //regression parameters
-    Eigen::VectorXd d_betas;
+    Eigen::VectorXd d_betas;                //does not need initialization
     // derivatives of betas
-    Eigen::MatrixXd d2_betas;
+    Eigen::MatrixXd d2_betas;               //does not need initialization
     //Hessian of regression parameters
-    Eigen::MatrixXd covars;
+    Eigen::MatrixXd covars;                 //initialized
     //covariates
-    Eigen::VectorXd eta;
+    Eigen::VectorXd eta;                    //initialized
     //vector of linear predictions
-    Eigen::VectorXd expEta;
+    Eigen::VectorXd expEta;                 //initialized
     //vector of exponential of linear predictors
     
-    Eigen::VectorXd s_t;
+    Eigen::VectorXd s_t;                    //initialized
     //vector of times associated with survival probabilities to calculate
-    Eigen::VectorXd d_t;
+    Eigen::VectorXd d_t;                    //initialized
     // vector of times associated with densities to caculate
-    Eigen::VectorXd s_v;
+    Eigen::VectorXd s_v;                    //Initialized at first call optObj.calcLike_all(), happens right outside constructor for IC_parOpt
     //vector of survival probabilities calculated at s_t
     Eigen::VectorXd d_v;
     // vector of densities calculated at d_t
@@ -172,7 +179,8 @@ public:
         blInf->update_baseline_vals(s_t,d_t,s_v, d_v,b_pars);};
     double calcLike_all(){
         calculate_baseline_probs();
-        return(calcLike_baseReady());
+        double ans = calcLike_baseReady();
+        return(ans);
     };
     
     void NR_baseline_pars();

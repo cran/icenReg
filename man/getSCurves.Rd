@@ -14,22 +14,25 @@
 \examples{
 	set.seed(1)
 
-	sim_data <- simIC_weib(n = 250)
+	sim_data <- simIC_weib(n = 500, b1 = .3, b2 = -.3,
+	                      shape = 2, scale = 2,
+	                      inspections = 6, inspectLength = 1)
 	fit <- ic_sp(Surv(l, u, type = 'interval2') ~ x1 + x2, data = sim_data, bs_samples = 0)	
 
-	newdata <- data.frame(x1 = c(0,1), x2 = c(1, 1) )
+	new_data <- data.frame(x1 = c(0,1), x2 = c(1, 1) )
 	#want to fit survival curves with above covariates
-	rownames(newdata) <- c('group 1', 'group 2')
+	rownames(new_data) <- c('group 1', 'group 2')
 	#getSCurves will name the survival curves according to rownames
 
-	curveInfo <- getSCurves(fit, newdata)
+	curveInfo <- getSCurves(fit, new_data)
 	xs <- curveInfo$Tbull_ints
 	#Extracting Turnbull intervals
 	sCurves <- curveInfo$S_curves
 	#Extracting estimated survival curves
 	
 	plot(xs[,1], sCurves[[1]], xlab = 'time', ylab = 'S(t)', 
-	     type = 's', ylim = c(0,1), xlim = c(0,1))
+	     type = 's', ylim = c(0,1),
+	     xlim = range(as.numeric(xs), finite = TRUE))
 	#plotting upper survival curve estimate
 	lines(xs[,2], sCurves[[1]], type = 's')
 	#plotting lower survival curve estimate
@@ -39,7 +42,7 @@
 	#plotting upper and lower survival curves for group 2
 	
 	# Actually, all this plotting is a unnecessary: 
-	# plot(fit, newdata) will bascially do this all
+	# plot(fit, new_data) will bascially do this all
 	# But this is more of a tutorial in case custom
 	# plots were desired
 }

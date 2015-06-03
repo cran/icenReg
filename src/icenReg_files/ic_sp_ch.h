@@ -23,7 +23,7 @@ class node_info{
 public:
     vector<int> l;      //vector that indicates the observations for which this node is the left side
     vector<int> r;      //vector that indicated the observations for which this node is the right side
-    double par;         //log cumulative hazard
+//    double par;         //log cumulative hazard
 };
 
 class obInf{
@@ -37,7 +37,7 @@ public:
     int ind;                   //beginning and ending of parameters affected by adjusting active points
     double par;
     vector<int> dep_obs;
-    vector<int> dep_nodes;      //don't think this is necessary; l, r tells us all this!
+//    vector<int> dep_nodes;      //don't think this is necessary; l, r tells us all this!
 };
 
 class actSet_Abst{
@@ -155,6 +155,7 @@ public:
     }
     
     void calcRegDervs(){return;}
+    virtual ~actSet_ph(){};
 };
 
 
@@ -174,9 +175,11 @@ public:
     }
     
     void calcRegDervs(){return;}
+    virtual ~actSet_po(){};
 };
 
 extern "C" {
     SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType);
+    SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals);
 }
 #endif /* defined(____ic_sp_cm__) */
