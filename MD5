@@ -1,4 +1,4 @@
-b9c4afbc743ae0bb4b5fe9224de25618 *DESCRIPTION
+bf0be95fa36c9f5c60723c6c873e3e21 *DESCRIPTION
 12e764f962ffce37dabb3243074743e0 *NAMESPACE
 1260436d6c03f64cdd764ebee12de7da *R/Utilities.R
 255b8dcb56c741eb366503c3cab0bec2 *R/user_functions.R
@@ -280,7 +280,7 @@ cbd65be692bfa660e5c49b7f72cb923a *src/Eigen_local/src/plugins/CommonCwiseBinaryO
 17b3c347113258e434b8ac42b2f3d49d *src/Eigen_local/src/plugins/MatrixCwiseUnaryOps.h
 8f6b8aa17a24bb561791bda8a1c0417d *src/icenReg.cpp
 c26c6a4a8c6e7078a1b81d4eecfa8529 *src/icenReg_files/basicUtilities.cpp
-4c57331e88c48a64d370c474842029c2 *src/icenReg_files/ic_par.cpp
+a103252740f598afbea3d1a65f22166b *src/icenReg_files/ic_par.cpp
 5da7e99726dcf44df34c61e7e9cd34ed *src/icenReg_files/ic_par.h
 245ebc8a0ad73eafe10735d5baeecfc6 *src/icenReg_files/ic_sp_ch.cpp
 c87af43eb140afe2a15cbe6112d42a30 *src/icenReg_files/ic_sp_ch.h

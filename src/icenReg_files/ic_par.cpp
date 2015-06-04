@@ -319,7 +319,7 @@ IC_parOpt::IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
         blInf = new loglogisticInfo();
         b_pars.resize(2);
         b_pars[0] = 0;
-        b_pars[0] = 0;
+        b_pars[1] = 0;
     }
     else{Rprintf("warning: parameter type not supported!\n");}
     
