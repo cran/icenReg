@@ -115,7 +115,10 @@ public:
     
     virtual double basHaz2CondS(double ch, double eta) = 0;     //done
     virtual double base_d1_contr(double h, double pob, double eta) = 0; //done, not checked
-    virtual void calcRegDervs() = 0;
+    virtual double reg_d1_lnk(double ch, double xb, double log_p) = 0;
+    virtual double reg_d2_lnk(double ch, double xb, double log_p) = 0;
+    
+    void calcAnalyticRegDervs(Eigen::MatrixXd &hess, Eigen::VectorXd &d1);
     void rawDervs2ActDervs();
     
     Eigen::VectorXd     baseCH;     //Vector of baseline log cumulative hazards.
@@ -130,11 +133,13 @@ public:
     Eigen::VectorXd     reg_d1;     //first derivatives of regression parameters        //initialized
     Eigen::MatrixXd     reg_d2;     //Hessian for derivatives       //initialized
 
+    vector<double> w;
+    
     double h;
     bool hasCovars;
 };
 
-void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, actSet_Abst* actSet);
+void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, SEXP R_w, actSet_Abst* actSet);
 //function for setting up a actSet_Abst class
 
 void addDepNodes(vector<int> &intoVec, int l, int r, vector<node_info> &nf);
@@ -154,7 +159,15 @@ public:
         return (-exp(logAns));
     }
     
-    void calcRegDervs(){return;}
+    double reg_d1_lnk(double ch, double xb, double log_p){
+        double term1 = -exp(ch + xb);
+        return(-exp(term1 + ch + xb - log_p));
+    }
+    double reg_d2_lnk(double ch, double xb, double log_p){
+        double term1 = -exp(ch + xb);
+        double term2 = exp(term1 - log_p);
+        return(term1 * term2 + term1 * term1 *term2);
+    }
     virtual ~actSet_ph(){};
 };
 
@@ -164,22 +177,38 @@ public:
     double basHaz2CondS(double ch, double eta){
         if(ch == R_NegInf)  return(1);
         if(ch == R_PosInf)  return(0);
-        double s = exp(-exp(ch));
-        double nu = exp(eta);
-        return( (s*nu) / (nu * s - s + 1)) ;}
+        double mu = exp(ch);
+        double s = exp(-mu);
+        double s_nu = exp(eta - mu);
+        return( (s_nu) / (s_nu - s + 1)) ;}
     double base_d1_contr(double ch, double pob, double eta){
         double s = exp(-exp(ch));
-        double nu = exp(eta);
-        double logAns = -log(pob) - 2 * log(s*nu - s + 1) + ch - exp(h);
+        double s_nu = exp(eta - exp(ch));
+        double logAns = -log(pob) - 2 * log(s_nu - s + 1) + ch - exp(h);
         return (-exp(logAns));
     }
     
-    void calcRegDervs(){return;}
+    double reg_d1_lnk(double ch, double xb, double log_p){
+        double s = exp(-exp(ch));
+        double a = exp(xb-exp(ch));
+        double ans = exp( log(a *(1-s)) - 2 * log( a - s + 1) - log_p);
+        return(ans);
+//        return( a * (1-s) / pow(a - s + 1, 2.0) );
+    }
+    double reg_d2_lnk(double ch, double xb, double log_p){
+        double s = exp(-exp(ch));
+        double a = exp(xb-exp(ch));
+        double b = a - s + 1;
+        double top =  (a * (1 - s) * b - 2 * a * a *(1-s)) ;
+        double bottom = pow(b, 3.0);
+        double ans = top/(bottom * exp(log_p));
+        return(ans);
+    }
     virtual ~actSet_po(){};
 };
 
 extern "C" {
-    SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType);
+    SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w);
     SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals);
 }
 #endif /* defined(____ic_sp_cm__) */

@@ -1,27 +1,11 @@
-#Updates from v1.1.1
-#	Added proportional odds model
-#   Added semi parametric models (models = ph and po, dists = exp, weib, gamma, lnorm, loglogistic)
-#	Added diagnostic tools for covariates and baseline distributions
-#   At C++ level, switched to abstract class IC_OptimInfo instead of ICPH_OptimInfo
-#   Added simulation of proportional odds
-#	switched to ASA algorithm 
 
-#Updates for v1.1.1:
-#	Stricter convergence criteria (10^-10 instead of 10^-7)
-#	Allows for bs_samples = 0 in ic_ph
-#	Allows for fitting of models with only 1 covariate
-#	Fixed bug in parameterization of imputation model
-#	Fixed bug that imputation model sometimes simulates Inf, breaking coxph
-#	Added dataset (mdata)
-#	slight modification in plot of survival curve
 
-ic_sp <- function(formula, data, bs_samples = 0, useMCores = F, seed = NULL, model = 'ph'){
+ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, useMCores = F, seed = NULL){
 	if(missing(data)) stop('data argument required')
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
-    m <- match(c("formula", "data", "subset", "weights", "na.action", 
-        "offset"), names(mf), 0L)
-    mf <- mf[c(1L, m)]
+    m <- match(c("formula", "data", "subset", "na.action", "offset"), names(mf), 0L)
+	mf <- mf[c(1L, m)]
     mf$drop.unused.levels <- TRUE
     mf[[1L]] <- quote(stats::model.frame)
     mf <- eval(mf, parent.frame())
@@ -60,7 +44,15 @@ ic_sp <- function(formula, data, bs_samples = 0, useMCores = F, seed = NULL, mod
 	if(model == 'ph')	callText = 'ic_ph'
 	else if(model == 'po')	callText = 'ic_po'
 	else stop('invalid choice of model. Current optios are "ph" (cox ph) or "po" (proportional odds)')
-   	fitInfo <- fit_ICPH(yMat, x, callText)
+	
+	if(is.null(weights)) 				weights = rep(1, nrow(yMat))
+	if(length(weights) != nrow(yMat))	stop('weights improper length')
+	if(any(is.na(weights) > 0) )		stop('NAs not allowed in weights')
+	if(any(weights < 0)	)				stop('negative weights not allowed')
+	
+	if(is.null(ncol(x)) ) recenterCovars = FALSE
+	
+   	fitInfo <- fit_ICPH(yMat, x, callText, weights)
 	dataEnv <- list()
 	dataEnv[['x']] <- as.matrix(x, nrow = nrow(yMat))
 	if(ncol(dataEnv$x) == 1) colnames(dataEnv[['x']]) <- as.character(formula[[3]])
@@ -74,7 +66,7 @@ ic_sp <- function(formula, data, bs_samples = 0, useMCores = F, seed = NULL, mod
 	   	if(useMCores == F){
 	 		for(i in 1:bs_samples){
 	    		set.seed(i + seed)
-	    		sampDataEnv <- bs_sampleData(dataEnv)
+	    		sampDataEnv <- bs_sampleData(dataEnv, weights)
 				bsMat <- rbind(bsMat, getBS_coef(sampDataEnv, callText = callText))
 	    	}
 	    }
@@ -82,7 +74,7 @@ ic_sp <- function(formula, data, bs_samples = 0, useMCores = F, seed = NULL, mod
 	    	bsMat <- foreach(i = seeds, 
 	    					.combine = 'rbind') %dopar%{
 	    		set.seed(i)
-	    		sampDataEnv <- bs_sampleData(dataEnv)
+	    		sampDataEnv <- bs_sampleData(dataEnv, weights)
 				getBS_coef(sampDataEnv, callText = callText)
 	    	}
 	    }
@@ -252,9 +244,10 @@ summary.icenReg_fit <- function(object,...){
 		if(inherits(fit, 'impute_par_icph')){
 			cat('\nnumber of imputations = ', nrow(fit$imp_coef), '\n')
 		}
-		if(inherits(fit, 'par_fit'))
+		if(inherits(fit, 'par_fit')){
 			cat('\nfinal llk = ', fit$final_llk, '\n')
 			cat('Iterations = ', fit$iterations,'\n')
+		}
 	}
 	else{
 		colNames <- c('Estimate', 'Exp(Est)')
@@ -473,13 +466,18 @@ simICPO_beta <- function(n = 100, b1 = 1, b2 = -1, inspections = 1, shape1 = 2, 
 
 
 diag_covar <- function(object, varName, 
-           data, model,
+           data, model, weights = NULL,
            yType = 'meanRemovedTransform', 
            factorSplit = TRUE, 
            numericCuts, col, 
            xlab, ylab, main, 
-           max_n_use = 10000){
-
+           max_n_use = 10000, lgdLocation = NULL){
+	if(!yType %in% c('survival', 'transform', 'meanRemovedTransform')) stop("yType not recognized. Options = 'survival', 'transform' or 'meanRemovedTransform'")
+	subDataInfo <- subSampleData(data, max_n_use, weights)
+	data <- subDataInfo$data
+	weights <- subDataInfo$w
+	if(is.null(weights)) weights <- rep(1, nrow(data))
+	
 	fullFormula <- getFormula(object)
 	if(missing(model)) model <- object$model
 	if(is.null(model)) stop('either object must be a fit, or model must be provided')
@@ -491,7 +489,7 @@ diag_covar <- function(object, varName,
 		par(mfrow = c( ceiling(nV/k), k) )
 		for(vn in allVars){
 			useFactor <- length( unique((data[[vn]])) ) < 5
-			diag_covar(object, vn, factorSplit = useFactor, model = model, data = data, yType = yType)
+			diag_covar(object, vn, factorSplit = useFactor, model = model, data = data, yType = yType, weights = weights, lgdLocation = lgdLocation)
 			}
 		return(invisible(NULL))
 	}
@@ -510,10 +508,6 @@ diag_covar <- function(object, varName,
 															
 
 	allData <- data
-
-	if(nrow(allData) > max_n_use) {
-		use_inds <- sample(1:nrow(allData), size= max_n_use)	
-	}
 	vals <- allData[[varName]]
 	if(is.null(vals))	stop(paste('Cannot find variable', varName, 'in original dataset'))
 	orgCall <- fullFormula
@@ -531,7 +525,8 @@ diag_covar <- function(object, varName,
 		spltInfo <- makeNumericSplitInfo(vals, numericCuts)
 	}
 	
-	spltFits <- splitAndFit(reducCall, allData, varName, spltInfo, ic_sp, model = model, bs_samples = 0)
+	spltFits <- splitAndFit(newcall = reducCall, data = allData, varName = varName, 
+							splitInfo = spltInfo, fitFunction = ic_sp, model = model, weights = weights)
 		
 	allX <- numeric()
 	allY <- numeric()
@@ -619,18 +614,19 @@ diag_covar <- function(object, varName,
 			lines(xs[,2], y, col = col[i], type = 's')
 		}
 	}
+	if(!is.null(lgdLocation))	lgdLoc <- lgdLocation
 	legend(lgdLoc, legend = fitNames, col = col, lwd = 1)
 }
 
 
 
 
-ic_par <- function(formula, data, model = 'ph', dist = 'weibull'){
+ic_par <- function(formula, data, model = 'ph', dist = 'weibull', weights = NULL){
 	if(missing(data)) stop('data argument required')
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
-    m <- match(c("formula", "data", "subset", "weights", "na.action", 
-        "offset"), names(mf), 0L)
+#    m <- match(c("formula", "data", "subset", "weights", "na.action", "offset"), names(mf), 0L)
+    m <- match(c("formula", "data", "subset", "na.action", "offset"), names(mf), 0L)
     mf <- mf[c(1L, m)]
     mf$drop.unused.levels <- TRUE
     mf[[1L]] <- quote(stats::model.frame)
@@ -665,7 +661,12 @@ ic_par <- function(formula, data, model = 'ph', dist = 'weibull'){
 	    
 	callText <- paste(dist, model)
 
-   	fitInfo <- fit_par(yMat, x, parFam = dist, link = model, leftCen = 0, rightCen = Inf, uncenTol = 10^-6, regnames = xNames)
+	if(is.null(weights))	weights = rep(1, nrow(yMat))
+	if(length(weights) != nrow(yMat))	stop('weights improper length!')
+	if(min(weights) < 0)				stop('negative weights not allowed!')
+	if(sum(is.na(weights)) > 0)			stop('cannot have weights = NA')
+	if(is.null(ncol(x))) recenterCovar = FALSE
+   	fitInfo <- fit_par(yMat, x, parFam = dist, link = model, leftCen = 0, rightCen = Inf, uncenTol = 10^-6, regnames = xNames, weights = weights)
 	fitInfo$call = cl
 	fitInfo$formula = formula
     class(fitInfo) <- c(callText, 'icenReg_fit', 'par_fit')
@@ -739,27 +740,30 @@ getFitEsts <-function(fit, newdata, p, q){
 	stop('getFitEsts not currently supported for this object')
 }
 
-diag_baseline <- function(object, data, model = 'ph',
+diag_baseline <- function(object, data, model = 'ph', weights = NULL,
 						  dists = c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic'),
-						  max_n_use = 10000, cols = NULL){
+						  max_n_use = 10000, cols = NULL, lgdLocation = 'bottomleft',
+						  useMidCovars = T){
+						  	
+	newdata = NULL
+	if(useMidCovars) newdata <- 'midValues'
 	formula <- getFormula(object)
 	if(missing(data))	data <- getData(object)
 
-	if(nrow(data) > max_n_use){
-		samp_inds <- sample(1:nrow(data), size = max_n_use)
-		sp_data <- data[samp_inds,]
-	}
-	else sp_data <- data
+	subDataInfo <- subSampleData(data, max_n_use, weights)
+	sp_data <- subDataInfo$data
+	weights <- subDataInfo$w
+
 	sp_fit <- ic_sp(formula, data = sp_data, bs_samples = 0, model = model)
-	plot(sp_fit)
+	plot(sp_fit, newdata)
 	xrange <- range(getSCurves(sp_fit)$Tbull_ints, finite = TRUE)
 	grid <- xrange[1] + 0:100/100 *(xrange[2] - xrange[1])
 	if(is.null(cols)) cols <- 1 + 1:length(dists)
 	for(i in seq_along(dists)){
 		this_dist <- dists[i]
 		par_fit <- ic_par(formula, data = data, model = model, dist = this_dist)
-		y <- getFitEsts(par_fit, q = grid)
+		y <- getFitEsts(par_fit, newdata = newdata, q = grid)
 		lines(grid, 1 - y, col = cols[i])
 	}
-	legend('bottomleft', legend = c('Semi-parametric', dists), col = c('black', cols), lwd = 1)
+	legend(lgdLocation, legend = c('Semi-parametric', dists), col = c('black', cols), lwd = 1)
 }

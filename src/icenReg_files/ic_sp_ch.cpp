@@ -23,7 +23,7 @@ double actSet_Abst::sum_llk(){
     double ans = 0;
     for(int i = 0; i < n; i++){
         update_p_ob(i);
-        ans += log(obs_inf[i].pob);
+        ans += log(obs_inf[i].pob) * w[i];
     }
     if(isnan(ans)) ans = R_NegInf;
     return(ans);
@@ -36,7 +36,7 @@ double actSet_Abst::par_llk(int a_ind){
     for(int i = 0; i < par_n; i++){
         thisInd = actIndex[a_ind].dep_obs[i];
         update_p_ob(thisInd);
-        ans += log(obs_inf[thisInd].pob);
+        ans += log(obs_inf[thisInd].pob) * w[thisInd];
     }
     if(isnan(ans)) ans = R_NegInf;
     return(ans);
@@ -180,26 +180,30 @@ void actSet_Abst::removeActive(int act_ind){
 void printIndexInfo(actSet_Abst &actSet, int i){
     actPointInf* a = &actSet.actIndex[i];
     Rprintf("ind = %d, par = %f, dep_obs = ", a->ind, a->par);
-    for(int i = 0; i < a->dep_obs.size(); i++)  { Rprintf(" %d ", a->dep_obs[i]);};
+    int thisSize = a->dep_obs.size();
+    for(int i = 0; i < thisSize; i++)  { Rprintf(" %d ", a->dep_obs[i]);};
     Rprintf("\n");
 }
 
 
 int actSet_Abst::getActInd(int raw_ind){
-    for(int i = 0; i < actIndex.size(); i++){ if(raw_ind == actIndex[i].ind) return(i);}
+    int thisSize = actIndex.size();
+    for(int i = 0; i < thisSize; i++){ if(raw_ind == actIndex[i].ind) return(i);}
     return(-1);
 }
 
 void actSet_Abst::checkIfActShouldDrop(int act_ind){
     if(act_ind == 0) return;
-    if(act_ind >= actIndex.size() ) return;
+    int ak = actIndex.size();
+    if(act_ind >= ak ) return;
     double thispar = actIndex[act_ind].par;
     double lowerpar = actIndex[act_ind-1].par;
     if( abs(thispar -lowerpar) < pow(10, -12))   removeActive(act_ind);
 }
 
 int actSet_Abst::getNextActRawInd(int raw_ind){
-    for(int i = 0; i < actIndex.size(); i++){
+    int thisSize = actIndex.size();
+    for(int i = 0; i < thisSize; i++){
         if(raw_ind < actIndex[i].ind)   return(actIndex[i].ind);
     }
     return(baseCH.size()-1);
@@ -208,18 +212,20 @@ int actSet_Abst::getNextActRawInd(int raw_ind){
 
 
 /*      INITIALIZATION TOOLS    */
-void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, actSet_Abst* actSet){
+void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, SEXP R_w, actSet_Abst* actSet){
     actSet->h = 0.0001;
     int n = LENGTH(Rlind);
     if(n != LENGTH(Rrind)){Rprintf("length of Rlind and Rrind not equal\n"); return;}
     actSet->base_p_obs.resize(n);
     actSet->etas.resize(n);
     actSet->expEtas.resize(n);
+    actSet->w.resize(n);
     
     for(int i = 0; i < n; i++){
         actSet->etas[i]       = 0;
         actSet->expEtas[i]    = 1;
         actSet->base_p_obs[i] = 0;
+        actSet->w[i]          = REAL(R_w)[i];
     }
     
     copyRmatrix_intoEigen(RCovars, actSet->covars);
@@ -279,7 +285,8 @@ void setupActSet(SEXP Rlind, SEXP Rrind, SEXP RCovars, actSet_Abst* actSet){
     actSet->actIndex.insert(actSet->actIndex.begin(), firstActPt);
     actSet->act_setPar(0, curVal);
     
-    for(int i = 1; i < minActPoints.size(); i++){
+    int thisSize = minActPoints.size();
+    for(int i = 1; i < thisSize; i++){
         curVal += stepSize;
         actSet->addActive( minActPoints[i], curVal);
     }
@@ -348,22 +355,23 @@ void actSet_Abst::analyticBase1stDerv(vector<double> &d1){
     for(int i = 0; i < n; i++)
         update_p_ob(i);
     
-    double this_pob, this_ch, this_cont, this_eta;
+    double this_pob, this_ch, this_cont, this_eta, this_w;
     int l, r;
     for(int i = 0; i < n; i++){
         this_pob = obs_inf[i].pob;
         this_eta = etas[i];
         l = obs_inf[i].l;
         r = obs_inf[i].r;
+        this_w = w[i];
         if(l > 0){
             this_ch = baseCH[l];
             this_cont = base_d1_contr(this_ch, this_pob, this_eta);
-            raw_dervs[l] += this_cont;
+            raw_dervs[l] += this_cont * this_w;
         }
         if(r < (k-1)){
             this_ch = baseCH[r+1];
             this_cont = -base_d1_contr(this_ch, this_pob, this_eta);
-            raw_dervs[r+1] += this_cont;
+            raw_dervs[r+1] += this_cont * this_w;
         }
     }
     d1.resize(k);
@@ -395,7 +403,8 @@ void actSet_Abst::uniActiveOptim(int raw_ind){
     double lowerLim = R_NegInf;
     double curVal = actIndex[act_ind].par;
     if(act_ind > 0)                     lowerLim = actIndex[act_ind-1].par - curVal;
-    if(act_ind < actIndex.size() - 1)   upperLim = actIndex[act_ind+1].par - curVal;
+    int ak = actIndex.size();
+    if(act_ind < ak - 1)   upperLim = actIndex[act_ind+1].par - curVal;
     double prop = 0;
     if(isnan(dv[0]) || isnan(dv[1]) || dv[0] == R_NegInf || dv[0] == R_PosInf || dv[1] == R_NegInf || dv[1] == R_PosInf){
         Rprintf("error: degenerate derivative estimated! quiting uniActiveOptim\n");
@@ -424,9 +433,6 @@ void actSet_Abst::uniActiveOptim(int raw_ind){
     if(llk_nw < llk_st){
         act_addPar(act_ind, prop);
         llk_nw = par_llk(act_ind);
-        if( (llk_nw - llk_st) < -pow(10, -12)){
-            Rprintf("warning: likelihood decreased in uniActiveOptim. Difference = %f\n", llk_nw - llk_st);
-        }
         prop = 0;
     }
     
@@ -444,16 +450,19 @@ void actSet_Abst::vem_step(){
 }
 
 void actSet_Abst::icm_step(){
+    
     vector<double> d1;
     vector<double> d2;
     numericBaseDervsAllAct(d1, d2);
-    for(int i = 0; i < d1.size(); i ++){
+    int thisSize = d1.size();
+    for(int i = 0; i < thisSize; i ++){
         if(isnan(d2[i]))    {Rprintf("warning: d2 isnan!\n"); return;}
         if(d2[i] >= 0)      {Rprintf("warning: d2 >= 0 in icm step\n"); return;}
     }
     vector<double> x(d1.size());
     if(x.size() != actIndex.size()){Rprintf("warning: x.size()! = actIndex.size()\n"); return;}
-    for(int i = 0; i < actIndex.size(); i++) x[i] = actIndex[i].par;
+    thisSize = actIndex.size();
+    for(int i = 0; i < thisSize; i++) x[i] = actIndex[i].par;
     vector<double> prop(d1.size());
     
     double llk_st = sum_llk();
@@ -474,8 +483,75 @@ void actSet_Abst::icm_step(){
         llk_new = sum_llk();
     }
     
-    for(int i = 0; i < actIndex.size(); i++)
+    thisSize = actIndex.size();
+    for(int i = 0; i < thisSize; i++)
         checkIfActShouldDrop(i);
+
+    thisSize = actIndex.size();
+    for(int i = 0; i < thisSize; i++)
+        uniActiveOptim(actIndex[i].ind);
+}
+
+void actSet_Abst::calcAnalyticRegDervs(Eigen::MatrixXd &hess, Eigen::VectorXd &d1){
+    int k = reg_par.size();
+    int n = etas.size();
+    
+    Eigen::VectorXd l_cont(n);
+    Eigen::VectorXd r_cont(n);
+    Eigen::VectorXd totCont(n);
+
+    Eigen::VectorXd l_cont2(n);
+    Eigen::VectorXd r_cont2(n);
+    Eigen::VectorXd totCont2(n);
+    
+    int lind, rind;
+    double l_ch, r_ch, eta, pob, log_p;
+    for(int i = 0; i < n; i++){
+        l_cont[i]  = 0;
+        r_cont[i]  = 0;
+        l_cont2[i] = 0;
+        r_cont2[i] = 0;
+
+        lind = obs_inf[i].l;
+        rind = obs_inf[i].r;
+        pob  = obs_inf[i].pob;
+        log_p = log(pob);
+        l_ch = baseCH[lind];
+        r_ch = baseCH[rind + 1];
+        eta  = etas[i];
+        if(l_ch > R_NegInf){
+            l_cont[i]  = reg_d1_lnk(l_ch, eta, log_p);
+            l_cont2[i] = reg_d2_lnk(l_ch, eta, log_p);
+        }
+        if(r_ch < R_PosInf){
+            r_cont[i]  = -reg_d1_lnk(r_ch, eta, log_p);
+            r_cont2[i] = -reg_d2_lnk(r_ch, eta, log_p);
+        }
+        totCont[i] = l_cont[i] + r_cont[i];
+        totCont2[i] = l_cont2[i] + r_cont2[i] - totCont[i] * totCont[i];
+    }
+    
+    hess.resize(k,k);
+    d1.resize(k);
+    for(int i = 0; i < k; i++){
+        d1[i] = 0;
+        for(int j = 0; j < k; j++){
+            hess(i,j) = 0;
+        }
+    }
+
+
+    for(int i = 0; i < n; i++){
+        for(int a = 0; a < k; a++){
+            d1[a] += covars(i,a) * totCont[i];
+            for(int b = 0; b < a; b++){
+                hess(a,b) += covars(i,a) * covars(i,b) * totCont2[i];
+                hess(b,a) = hess(a,b);
+            }
+            hess(a,a) += covars(i,a) * covars(i,a) * totCont2[i];
+        }
+    }
+
 }
 
 void actSet_Abst::numericRegDervs(){
@@ -524,10 +600,33 @@ void actSet_Abst::numericRegDervs(){
 }
 
 void actSet_Abst::covar_nr_step(){
+    int k = reg_par.size();
+
+/*
     numericRegDervs();
+
+    Eigen::MatrixXd hess;
+    Eigen::VectorXd d1;
+   
+    calcAnalyticRegDervs(hess, d1);
+    
+    double d1Diff = 0;
+    double d2Diff = 0;
+    for(int i = 0; i < k; i++){
+        Rprintf("d1_num = %f, d1_analytic = %f  ", reg_d1[i], d1[i]);
+        d1Diff = max(d1Diff, abs(d1[i] - reg_d1[i]));
+        for(int j = 0; j < k; j++){
+            d2Diff = max(d2Diff, abs(hess(i,j) - reg_d2(i,j)));
+            Rprintf("d2_num = %f, d2_analytic = %f  ", reg_d2(i,j), hess(i,j));
+        }
+        Rprintf("\n");
+    }
+    Rprintf("max diffs = %f, %f\n", d1Diff, d2Diff);
+*/
+    calcAnalyticRegDervs(reg_d2, reg_d1);
+
     
     double lk_0 = sum_llk();
-    int k = reg_par.size();
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> esolve(reg_d2);
     Eigen::VectorXd evals(1);
     evals[0] = 1;
@@ -566,7 +665,7 @@ void actSet_Abst::covar_nr_step(){
 
 
 /*      CALLING ALGORITHM FROM R     */
-SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType){
+SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w){
     actSet_Abst* optObj;
     if(INTEGER(fitType)[0] == 1){
         optObj = new actSet_ph;
@@ -576,24 +675,34 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType){
     }
     else { Rprintf("fit type not supported\n");return(R_NilValue);}
 
-    setupActSet(Rlind, Rrind, Rcovars, optObj);
+    setupActSet(Rlind, Rrind, Rcovars, R_w, optObj);
 
     double llk_old = R_NegInf;
     double llk_new = optObj->sum_llk();
     int tries = 0;
     
-    while(tries < 500 && (llk_new - llk_old) > pow(10, -10)){
+    bool metOnce = false;
+    double tol = pow(10, -10);
+    while(tries < 500 && (llk_new - llk_old) > tol){
         tries++;
         llk_old = llk_new;
         
         optObj->vem_step();
         if(optObj->hasCovars)       optObj->covar_nr_step();
-        for(int i = 0; i < 5; i++)  optObj->icm_step();
+        for(int i = 0; i < 10; i++)  {optObj->icm_step(); }
         llk_new = optObj->sum_llk();
+        
+        if(llk_new - llk_old > tol){metOnce = false;}
+        if(metOnce == false){
+            if(llk_new - llk_old <= tol){
+                metOnce = true;
+                llk_old = llk_old - 2 * tol;
+            }
         }
+    }
 
  
-    if((llk_new - llk_old) < -0.00001 ){
+    if((llk_new - llk_old) < -0.001 ){
         Rprintf("warning: likelihood decreased! difference = %f\n", llk_new - llk_old);
     }
     
@@ -607,7 +716,8 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType){
     SEXP R_fnl_llk = PROTECT(allocVector(REALSXP, 1));
     SEXP R_its = PROTECT(allocVector(REALSXP, 1));
     SEXP R_score = PROTECT(allocVector(REALSXP, optObj->reg_par.size()));
-    for(int i = 0; i < p_hat.size(); i++)
+    int phat_size = p_hat.size();
+    for(int i = 0; i < phat_size; i++)
         REAL(R_pans)[i] = p_hat[i];
     for(int i = 0; i < optObj->reg_par.size(); i++){
         REAL(R_coef)[i] = optObj->reg_par[i];

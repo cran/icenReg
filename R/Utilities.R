@@ -11,32 +11,47 @@ findMaximalIntersections <- function(lower, upper){
 }
 
 
-fit_ICPH <- function(obsMat, covars, callText = 'ic_ph'){
+fit_ICPH <- function(obsMat, covars, callText = 'ic_ph', weights){
+	recenterCovars <- TRUE
 	mi_info <- findMaximalIntersections(obsMat[,1], obsMat[,2])
 	k = length(mi_info[['mi_l']])
-	pmass <- rep(1/k, k)
 	covars <- as.matrix(covars)
 	if(callText == 'ic_ph')	fitType = as.integer(1)
 	else if(callText == 'ic_po') fitType = as.integer(2)
 	else stop('callText not recognized in fit_ICPH')
-	myFit <- .Call('ic_sp_ch', mi_info$l_inds, mi_info$r_inds, covars, fitType) 
+	
+	if(recenterCovars){
+		pca_info <- prcomp(covars, scale. = TRUE)
+		covars <- as.matrix(pca_info$x)
+	}
+	
+	myFit <- .Call('ic_sp_ch', mi_info$l_inds, mi_info$r_inds, covars, fitType, as.numeric(weights)) 
 	names(myFit) <- c('p_hat', 'coefficients', 'final_llk', 'iterations', 'score')
 	myFit[['T_bull_Intervals']] <- rbind(mi_info[['mi_l']], mi_info[['mi_r']])
 	myFit$p_hat <- myFit$p_hat / sum(myFit$p_hat) 
-	#removes occasional numerical error. Error on the order of 10^(-15), but causes problem when calculating last 
-	#entry for estimates survival curve
+	myFit$baseOffset <- 0
+	if(recenterCovars == TRUE){
+		myFit$pca_coefs <- myFit$coefficients
+		myFit$pca_info <- pca_info
+		myFit$coefficients <- as.numeric( myFit$pca_info$rotation %*% myFit$coefficients) / myFit$pca_info$scale		
+		myFit$baseOffset = as.numeric(myFit$coefficients %*% myFit$pca_info$center)
+	}
 	return(myFit)
 }
 
 
 
 
-bs_sampleData <- function(rawDataEnv){
+bs_sampleData <- function(rawDataEnv, weights){
 	n <- length(rawDataEnv[['y']][,1])
 	sampEnv <- new.env()
-	sampInds <- sample(1:n, n, replace = TRUE)
-	sampEnv[['x']] <- rawDataEnv[['x']][sampInds,]
-	sampEnv[['y']] <- rawDataEnv[['y']][sampInds,]
+	sampInds <- sample(1:n, ceiling(sum(weights)), replace = TRUE, prob = weights)
+	tabledInds <- table(sampInds)
+	unqInds <- as.numeric(names(tabledInds))
+	weights <- as.numeric(tabledInds)
+	sampEnv[['x']] <- rawDataEnv[['x']][unqInds,]
+	sampEnv[['y']] <- rawDataEnv[['y']][unqInds,]
+	sampEnv[['w']] <- weights
 	return(sampEnv)
 }
 
@@ -44,7 +59,7 @@ getBS_coef <- function(sampDataEnv, callText = 'ic_ph'){
 	xMat <- cbind(sampDataEnv$x,1)
 	invertResult <- try(diag(solve(t(xMat) %*% xMat )), silent = TRUE)
 	if(is(invertResult, 'try-error')) {return( rep(NA, ncol(xMat) -1) ) }
-	output <- fit_ICPH(sampDataEnv$y, sampDataEnv$x, callText)$coefficients
+	output <- fit_ICPH(sampDataEnv$y, sampDataEnv$x, callText, sampDataEnv$w)$coefficients
 	return(output)
 }
 
@@ -62,7 +77,16 @@ expandX <- function(formula, data, fit){
 
 ###		PARAMETRIC FIT UTILITIES
 
-fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', leftCen = 0, rightCen = Inf, uncenTol = 10^-6, regnames){
+fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', leftCen = 0, rightCen = Inf, uncenTol = 10^-6, regnames, weights){
+	recenterCovar <- TRUE
+	etaOffset = 0
+	if(!is.matrix(x_mat))
+		x_mat <- matrix(x_mat, ncol = 1)
+	if(recenterCovar == TRUE){
+		prcomp_xmat <- prcomp(x_mat, center = TRUE, scale. = TRUE)
+		x_mat <- prcomp_xmat$x
+	}
+	
 	isUncen <- abs(y_mat[,2] - y_mat[,1]) < uncenTol
 	mean_uncen_t <- (y_mat[isUncen,1] + y_mat[isUncen,2])/2
 	y_mat[isUncen,1] <- mean_uncen_t
@@ -89,13 +113,18 @@ fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', leftCen = 0, ri
 	
 	gicInd_mat <- as.matrix(cbind(leftSideInd, rightSideInd))
 	
-	if(is.matrix(x_mat))			x_mat_rearranged <- rbind(x_mat[isUncen,], x_mat[isGCen,], x_mat[isLeftCen,], x_mat[isRightCen,])
+	w_reordered <- c(weights[isUncen], weights[isGCen], weights[isLeftCen], weights[isRightCen])
+	
+	if(is.matrix(x_mat)	){
+		if(ncol(x_mat) > 1)	x_mat_rearranged <- rbind(x_mat[isUncen,], x_mat[isGCen,], x_mat[isLeftCen,], x_mat[isRightCen,])
+		else				x_mat_rearranged <- matrix(c(x_mat[isUncen], x_mat[isGCen], x_mat[isLeftCen], x_mat[isRightCen]), ncol = 1)
+	}
 	else if(length(x_mat) != 0)		x_mat_rearranged <- matrix(c(x_mat[isUncen], x_mat[isGCen], x_mat[isLeftCen], x_mat[isRightCen]), ncol = 1)
 	else							x_mat_rearranged <- matrix(ncol = 0, nrow = nrow(x_mat))
 	storage.mode(x_mat_rearranged) <- 'double'
 	x_mat_rearranged <- as.matrix(x_mat_rearranged)	
-	
 	k_reg = ncol(x_mat_rearranged)
+		
 	#regnames = colnames(x_mat_rearranged)
 	if(parFam == 'gamma') {parInd = as.integer(1); k_base = 2; bnames = c('log_shape', 'log_scale')}
 	else if(parFam == 'weibull') {parInd = as.integer(2); k_base = 2; bnames = c('log_shape', 'log_scale')}
@@ -114,13 +143,33 @@ fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', leftCen = 0, ri
 	
 	fit <- .Call('ic_par', s_t, d_t, x_mat_rearranged,
 				uncenInd_mat, gicInd_mat, leftCenInd, rightCenInd,
-				parInd, linkInd, hessian)
+				parInd, linkInd, hessian, as.numeric(w_reordered) )
+								
 	names(fit) <- c('reg_pars', 'baseline', 'final_llk', 'iterations', 'hessian', 'score')
+	
+	if(recenterCovar == TRUE){
+		fit$pca_coefs <- fit$reg_pars
+		fit$pca_hessian  <- fit$hessian
+		fit$pca_info <- prcomp_xmat
+
+		allPars <- c(fit$baseline, fit$reg_pars)
+		
+		transformedPar <- PCAFit2OrgParFit(prcomp_xmat, fit$pca_hessian, allPars, k_base)
+		fit$baseline   <- transformedPar$pars[1:k_base]
+		fit$reg_pars   <- transformedPar$pars[-1:-k_base]
+		fit$var        <- transformedPar$var	
+		fit$hessian    <- solve(fit$var)
+		fit$baseOffset <- as.numeric(fit$reg_pars %*% prcomp_xmat$center)
+	}
+	
 	names(fit$reg_pars) <- regnames
 	names(fit$baseline) <- bnames
 	colnames(fit$hessian) <- hessnames
 	rownames(fit$hessian) <- hessnames
-	fit$var <- -solve(fit$hessian)
+	if(recenterCovar == FALSE){
+		fit$var <- -solve(fit$hessian)
+		fit$baseOffset = 0
+	}
 	fit$coefficients <- c(fit$baseline, fit$reg_pars)
 	return(fit)
 }
@@ -225,15 +274,29 @@ simRawExpTimes <- function(b1 = 0.5, b2 = -0.5, n = 100, rate = 1){
 
 
 ####		DIAGNOSTIC UTILITIES
-
+subSampleData <- function(data, max_n_use, weights){
+	if(nrow(data) <= max_n_use) return(list( data = data, w = weights))
+	if(is.null(weights)) weights <- rep(1, nrow(data))
+	sampInd <- sample(1:nrow(data), max_n_use, prob = weights)
+	tabledInds <- table(sampInd)
+	
+	newWeights <- as.numeric(names(tabledInds))
+	newInds <- as.numeric(tabledInds)
+	subData <- data[newInds,]
+	return(list(data = subData, w = newWeights))
+}
 
 removeVarFromCall <- function(call, varName){
 	newcall <- call
 	charCall <- as.character(newcall)
 	varName_plus <- paste(varName, '+')
 	plus_varName <- paste('+', varName)
+	varName_times <- paste('*', varName)
+	times_varName <- paste(varName, '*')
 	charCall[3] <- gsub(varName_plus, '', charCall[3], fixed = TRUE)
 	charCall[3] <- gsub(plus_varName, '', charCall[3], fixed = TRUE)
+	charCall[3] <- gsub(varName_times, '', charCall[3], fixed = TRUE)
+	charCall[3] <- gsub(times_varName, '', charCall[3], fixed = TRUE)
 	charCall[3] <- gsub(varName, '', charCall[3])
 	if(nchar(charCall[3]) == 0)	charCall[3] <- '0'
 	pastedCall <- paste(charCall[2], charCall[1], charCall[3])
@@ -251,12 +314,13 @@ removeVarFromCall <- function(call, varName){
 splitData <- function(data,		#full data
 					 varName,	#name to split data on
 					 splits,	#list of information necessary to make splits
-					 splitFun	#function that uses splits elements to divide up data
+					 splitFun,	#function that uses splits elements to divide up data
+					 weights
 					 ){
 					 splitData <- new.env()
 					 splitNames <- names(splits)
 					 for(sn in splitNames)
-					 	splitData[[sn]] <- splitFun(sn, varName, data, splits)	
+					 	splitData[[sn]] <- splitFun(sn, varName, data, splits, weights)	
 	return(splitData)
 }
 
@@ -264,9 +328,9 @@ makeFactorSplitInfo <- function(vals, levels){
 	sInfo <- list()
 	sInfo$splits <- list()
 	sInfo$splits[levels] <- 0
-	sInfo$splitFun <- function(splitName, varName, data, splits){
+	sInfo$splitFun <- function(splitName, varName, data, splits, weights){
 		keepInds <- which(data[[varName]] == splitName) 
-		return(data[keepInds,])
+		return(list(data = data[keepInds,], w = weights[keepInds]) )
 	}
 	sInfo
 }
@@ -280,20 +344,23 @@ makeNumericSplitInfo <- function(vals, cuts){
 		cutNames <- paste0('(', round(theseCuts[1], 2), ',', round(theseCuts[2],2), ']')
 		sInfo$splits[[cutNames]] <- theseCuts
 	}
-	sInfo$splitFun <- function(splitName, varName, data, splits){
+	sInfo$splitFun <- function(splitName, varName, data, splits, weights){
 		theseCuts <- splits[[splitName]]
 		keep <- data[[varName]] > theseCuts[1] & data[[varName]] <= theseCuts[2]
-		return(data[keep,])
+		return(list(data = data[keep,], w = weights[keep]) )
 	}
 	sInfo
 }
 
-splitAndFit <- function(newcall, data, varName, splitInfo, fitFunction, ...){
-	split_data <- splitData(data, varName = varName, splits = splitInfo$splits, splitFun = splitInfo$splitFun)
+splitAndFit <- function(newcall, data, varName, splitInfo, fitFunction, model, weights){
+	split_data <- splitData(data, varName = varName, splits = splitInfo$splits, 
+							splitFun = splitInfo$splitFun, weights = weights)
 	splitNames <- ls(split_data)
 	splitFits <- new.env()
 	for(sn in splitNames){
-		splitFits[[sn]] <- fitFunction(newcall, data = split_data[[sn]], ...)
+		theseData <- split_data[[sn]]$data
+		theseWeights <- split_data[[sn]]$w
+		splitFits[[sn]] <- ic_sp(newcall, data = theseData, model = model, weights = theseWeights)
 	}
 	return(splitFits)
 }
@@ -310,12 +377,18 @@ s_loglgst <- function(x, par){
 }
 
 get_etas <- function(fit, newdata = NULL){
-	if(is.null(newdata)){ans <- 1; names(ans) <- 'baseline'; return(ans)}
+	if(is.null(newdata)){ans <- exp(-fit$baseOffset); names(ans) <- 'baseline'; return(ans)}
+	if(is.character(newdata)){
+		if(newdata == 'midValues')
+		ans <- 1
+		names(ans) <- 'Mean Covariate Values'
+		return(ans)
+	}
 	grpNames <- rownames(newdata)
 	reducFormula <- fit$formula
 	reducFormula[[2]] <- NULL
 	new_x <- expandX(reducFormula, newdata, fit)
-	log_etas <- as.numeric( new_x %*% fit$reg_pars)	
+	log_etas <- as.numeric( new_x %*% fit$reg_pars - fit$baseOffset) 	
 	etas <- exp(log_etas)
 	names(etas) <- grpNames
 	return(etas)
@@ -461,5 +534,22 @@ get_tbull_mid_p <- function(q, s_t, tbulls){
 			}
 		}
 	}
+	return(ans)
+}
+
+PCAFit2OrgParFit <- function(PCA_info, PCA_Hessian, PCA_parEsts, numIdPars){
+	tot_k = numIdPars + length(PCA_info$scale)
+	if(tot_k != length(PCA_parEsts) )		stop('incorrect dimensions for PCAFit2OrgParFit')
+	if(numIdPars == 0)		pcaTransMat <- PCA_info$rotation
+	else{
+		pcaTransMat <- diag(1, tot_k)
+		pcaTransMat[(-1:-numIdPars), (-1:-numIdPars)] <- PCA_info$rotation
+	}
+	
+	for(i in seq_along(PCA_info$scale))
+		pcaTransMat[i + numIdPars, ] <- pcaTransMat[i + numIdPars,]/PCA_info$scale[i]
+	ans <- list()
+	ans$pars <- pcaTransMat %*% PCA_parEsts
+	ans$var  <- pcaTransMat %*% -solve(PCA_Hessian) %*% t(pcaTransMat)
 	return(ans)
 }

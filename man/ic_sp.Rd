@@ -5,15 +5,17 @@
 \alias{plot.icenReg_fit}
 \title{Semi-Parametric models for Interval Censored Data}
 \usage{
-  ic_sp(formula, data, bs_samples = 0, useMCores = F, seed = NULL, model = 'ph') 
+  ic_sp(formula, data, model = 'ph', weights = NULL,
+        bs_samples = 0, useMCores = F, seed = NULL) 
 }
 \arguments{
   \item{formula}{regression formula. Response must be a \code{Surv} object of type \code{'interval2'}}
   \item{data}{dataset}
+  \item{model}{What type of model to fit. Current choices are "\code{ph}" (Cox PH) or "\code{po}" (proportional odds)}
+   \item{weights}{vector of case weights. Not standardized; see details}
   \item{bs_samples}{Number of bootstrap samples used for estimation of standard errors}
   \item{useMCores}{Should multiple cores be used for bootstrap sample? Does not register cluster (see example)}
   \item{seed}{seed for bootstrap. If \code{seed == NULL}, a random seed is still used. See details}
-  \item{model}{What type of model to fit. Current choices are "\code{ph}" (Cox PH) or "\code{po}" (proportional odds)}
 }
 \description{
  	Fits a semi-parametric model for interval censored data. Can fit either a Cox-PH model or a proportional odds model.  
@@ -23,6 +25,8 @@
  }
  
 \details{
+	In regards to weights, they are not standardized. This means that if weight[i] = 2, this is the equivalent to having two observations with the same values as subject i. 
+
 	It is very important to note that a random seed is *always* set if bs_samples > 0 (via \code{set.seed(seed)}), which can create problems in simulation studies if the same seed is set in every call to ic_sp during a simulation study. If \code{seed == NULL}, then the starting seed will be \code{round(runif(0, max = 10^8))}, which should be approximately equivalent to not setting a seed. 
 
   Likelihood function is maximized using an active set algorithm. 

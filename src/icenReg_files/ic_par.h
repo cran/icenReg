@@ -135,6 +135,8 @@ public:
     linkFun* lnkFn;
     // Information about link function
     
+    vector<double> w;                   //weights
+    
     Eigen::VectorXd b_pars;                 //initialized
     //baseline distribution parameters
     Eigen::VectorXd d_b_pars;               //does not need initialization
@@ -198,9 +200,9 @@ public:
     double h;
 
 
-    IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP covars,
-              SEXP uncenInd, SEXP gicInd, SEXP lInd, SEXP rInd,
-              SEXP parType, SEXP linkType);
+    IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
+              SEXP R_uncenInd, SEXP R_gicInd, SEXP R_lInd, SEXP R_rInd,
+              SEXP R_parType, SEXP R_linkType, SEXP R_w);
 };
 
 extern "C" {
@@ -215,7 +217,8 @@ extern "C" {
                 SEXP rInd,      // n_4 vector of indicators of left side of interval
                 SEXP parType,   // integer of paramteric type. 1 = gamma, 2 = weib, 3 = lnorm, 4 = exp, 5 = loglogistic
                 SEXP linkType,  // integer of link type. 1 = proportional odds, 2 = proportional hazards
-                SEXP outHessian // hessian matrix at MLE. Easier to pass this than to create it in C++
+                SEXP outHessian, // hessian matrix at MLE. Easier to pass this than to create it in C++
+                SEXP R_w         //
                 );
 }
 

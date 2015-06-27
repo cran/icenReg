@@ -10,19 +10,29 @@
 
 double IC_parOpt::calcLike_baseReady(){
     double ans = 0;
-    for(int i = 0; i < uc.size(); i++){
-        ans += log(lnkFn->con_d(d_v[uc[i].d], s_v[uc[i].s], expEta[uc[i].nu]));
+    int w_ind = -1;
+    int thisSize = uc.size();
+    for(int i = 0; i < thisSize; i++){
+        w_ind++;
+        ans += log(lnkFn->con_d(d_v[uc[i].d], s_v[uc[i].s], expEta[uc[i].nu])) * w[w_ind] ;
     }
-    for(int i = 0; i < gic.size(); i++){
+    thisSize = gic.size();
+    for(int i = 0; i < thisSize; i++){
+        w_ind++;
         ans += log(lnkFn->con_s(s_v[gic[i].l], expEta[gic[i].nu])
-                   -lnkFn->con_s(s_v[gic[i].r], expEta[gic[i].nu]) );
+                   -lnkFn->con_s(s_v[gic[i].r], expEta[gic[i].nu]) ) * w[w_ind];
     }
-    for(int i = 0; i < lc.size(); i++){
-        ans += log(1.0 - lnkFn->con_s(s_v[lc[i].r], expEta[lc[i].nu]));
+    thisSize = lc.size();
+    for(int i = 0; i < thisSize; i++){
+        w_ind++;
+        ans += log(1.0 - lnkFn->con_s(s_v[lc[i].r], expEta[lc[i].nu])) * w[w_ind];
     }
-    for(int i = 0; i < rc.size(); i++){
-        ans += log(lnkFn->con_s(s_v[rc[i].l], expEta[rc[i].nu]));
+    thisSize = rc.size();
+    for(int i = 0; i < thisSize; i++){
+        w_ind++;
+        ans += log(lnkFn->con_s(s_v[rc[i].l], expEta[rc[i].nu])) * w[w_ind];
     }
+    
     if(isnan(ans)) ans = R_NegInf;
     return(ans);
 }
@@ -120,6 +130,10 @@ void IC_parOpt::NR_baseline_pars(){
     while(lk_new < lk_0 && tries < 10){
         tries++;
         propVec *= 0.5;
+        b_pars += propVec;
+        lk_new = calcLike_all();
+    }
+    if(lk_new < lk_0){
         b_pars += propVec;
         lk_new = calcLike_all();
     }
@@ -266,11 +280,18 @@ void IC_parOpt::NR_reg_pars(){
         if(esolve.info() == Eigen::Success)
             evals = esolve.eigenvalues();
     }
-    
-    if(max(evals) > 0){
-        return;
+   
+    Eigen::VectorXd propVec(k);
+    if(max(evals) > 0)  {propVec = -d2_betas.ldlt().solve(d_betas);}
+        else{
+        for(int i = 0; i < k; i++){
+            propVec[i] = 0;
+            if(d2_betas(i,i) < 0)   propVec[i] = -d_betas[i] / d2_betas(i,i);
+            else propVec[i] = signVal(d_betas[i]) * 0.01;
+        
+        if(isnan(propVec[i])) propVec[i] = 0;
+        }
     }
-    Eigen::VectorXd propVec = -d2_betas.ldlt().solve(d_betas);
     tries = 0;
     betas += propVec;
     propVec *= -1;
@@ -283,6 +304,11 @@ void IC_parOpt::NR_reg_pars(){
         update_etas();
         lk_new = calcLike_all();
     }
+    if(lk_new < lk_0){
+        betas += propVec;
+        update_etas();
+        lk_new = calcLike_all();
+    }
 }
 
 
@@ -290,7 +316,7 @@ void IC_parOpt::NR_reg_pars(){
 
 IC_parOpt::IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
                      SEXP R_uncenInd, SEXP R_gicInd, SEXP R_lInd, SEXP R_rInd,
-                     SEXP R_parType, SEXP R_linkType){
+                     SEXP R_parType, SEXP R_linkType, SEXP R_w){
     blInf = NULL;
     if(INTEGER(R_parType)[0] == 1) {
         blInf = new gammaInfo();
@@ -352,9 +378,12 @@ IC_parOpt::IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
     int tot_n = n_1 + n_2 + n_3 + n_4;
     eta.resize(tot_n);
     expEta.resize(tot_n);
+    w.resize(tot_n);
+    
     for(int i = 0; i < tot_n; i++){
         eta[i] = 0;
         expEta[i] = 1;
+        w[i] = REAL(R_w)[i];
     }
     
     uc.resize(n_1);
@@ -391,13 +420,13 @@ IC_parOpt::IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
 SEXP ic_par(SEXP R_s_t, SEXP R_d_t, SEXP covars,
             SEXP uncenInd, SEXP gicInd, SEXP lInd, SEXP rInd,
             SEXP parType, SEXP linkType,
-            SEXP outHessian){
-    IC_parOpt optObj = IC_parOpt(R_s_t, R_d_t, covars, uncenInd, gicInd, lInd, rInd, parType, linkType);
+            SEXP outHessian, SEXP R_w){
+    IC_parOpt optObj = IC_parOpt(R_s_t, R_d_t, covars, uncenInd, gicInd, lInd, rInd, parType, linkType, R_w);
     if(optObj.blInf == NULL) return(R_NilValue);
     if(optObj.lnkFn == NULL) return(R_NilValue);
     double lk_old = R_NegInf;
     int iter = 0;
-    int maxIter = 100;
+    int maxIter = 1000;
     double tol = pow(10, -10);
     double lk_new = optObj.calcLike_all();
 
@@ -438,6 +467,7 @@ SEXP ic_par(SEXP R_s_t, SEXP R_d_t, SEXP covars,
         Rprintf("failed to find adequate starting point! Please contact maintainer of package\n");
         return(R_NilValue);
     }
+    
     while(iter < maxIter && lk_new - lk_old > tol){
         lk_old = lk_new;
         iter++;
