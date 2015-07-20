@@ -1,8 +1,8 @@
-e6cc081041d59d6a037ee17921fb359a *DESCRIPTION
-12e764f962ffce37dabb3243074743e0 *NAMESPACE
-fe7761d0a65207563eb4fd79e2f9bcd9 *NEWS
-36faa7bd6b4efd70cc0cfc8d2a7a0792 *R/Utilities.R
-ad17642248d8b668d396a944c4bd631a *R/user_functions.R
+e25a3effdfe84052766bcbf771d3cb0c *DESCRIPTION
+8dd7bac1bf3a66f1af3f68753f289ca5 *NAMESPACE
+f27807ca912e0ec46b671f90519f2ab6 *NEWS
+fd9a56737a1da5d6403dcd22b8d21438 *R/Utilities.R
+7d8a9fa868c9565467c5eacdad8b2a34 *R/user_functions.R
 f307847a75730ae6ea929736f96e6f03 *data/essIncData.RData
 72cfc23db61a54ac23ccbb8b4555c7b7 *data/essIncData_small.RData
 6497f5de6350063a1e58af0703d9413a *data/miceData.RData
@@ -285,8 +285,8 @@ cbd65be692bfa660e5c49b7f72cb923a *src/Eigen_local/src/plugins/CommonCwiseBinaryO
 17b3c347113258e434b8ac42b2f3d49d *src/Eigen_local/src/plugins/MatrixCwiseUnaryOps.h
 8f6b8aa17a24bb561791bda8a1c0417d *src/icenReg.cpp
 fef505ee14c9d1c3a4126dc1d0cb9875 *src/icenReg_files/basicUtilities.cpp
-94118431629a9656f5e02d0f76bc5558 *src/icenReg_files/ic_par.cpp
+2c68eb02fdd49def0876cf782dc366a2 *src/icenReg_files/ic_par.cpp
 fd6176f00278c27c662a311f39cfe40c *src/icenReg_files/ic_par.h
-3757553f1b7a3bba7ee26e7398551785 *src/icenReg_files/ic_sp_ch.cpp
+a2f546d6e29137c3ffff070a7da038ae *src/icenReg_files/ic_sp_ch.cpp
 1a5357bc2041dd4762d4e7b00a728e5f *src/icenReg_files/ic_sp_ch.h
 1003296cacc74be3bea31038ec8a2a63 *src/icenReg_files/pavaAlgorithm.cpp
