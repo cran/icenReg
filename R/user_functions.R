@@ -1,5 +1,6 @@
-ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, useMCores = F, seed = NULL){
-	if(missing(data)) stop('data argument required')
+ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, useMCores = F, seed = NULL,
+                  useGA = T, maxIter = 500, baseUpdates = 5){
+  useExpSteps = FALSE
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
     m <- match(c("formula", "data", "subset", "na.action", "offset"), names(mf), 0L)
@@ -19,18 +20,23 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 		xNames <- xNames[-ind]
 	}
 	
+  useFullHess = FALSE  
+    
+    
 	if(length(xNames) == 0 & bs_samples > 0){
 		 cat('no covariates included, so bootstrapping is not useful. Setting bs_samples = 0')
 		 bs_samples = 0
 	}
 	
-    yMat <- as.matrix(y)[,1:2]
+  yMat <- as.matrix(y)[,1:2]
+  if(is(y, 'Surv')){
     rightCens <- mf[,1][,3] == 0
-	yMat[rightCens,2] <- Inf
-	
-	exact <- mf[,1][,3] == 1
-	yMat[exact, 2] = yMat[exact, 1]
-    storage.mode(yMat) <- 'double'
+  	yMat[rightCens,2] <- Inf
+  	exact <- mf[,1][,3] == 1
+  	yMat[exact, 2] = yMat[exact, 1]
+  }
+  
+	storage.mode(yMat) <- 'double'
     
     if(sum(is.na(mf)) > 0)
     	stop("NA's not allowed. If this is supposed to be right censored (i.e. [4, NA] was supposed to be right censored at t = 4), replace NA with Inf")
@@ -50,7 +56,11 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 	
 	if(is.null(ncol(x)) ) recenterCovars = FALSE
 	
-   	fitInfo <- fit_ICPH(yMat, x, callText, weights)
+  other_info <- list(useGA = useGA, maxIter = maxIter, 
+                     baselineUpdates = baseUpdates, 
+                     useFullHess = useFullHess, useExpSteps = useExpSteps)  
+
+   	fitInfo <- fit_ICPH(yMat, x, callText, weights, other_info)
 	dataEnv <- list()
 	dataEnv[['x']] <- as.matrix(x, nrow = nrow(yMat))
 	if(ncol(dataEnv$x) == 1) colnames(dataEnv[['x']]) <- as.character(formula[[3]])
@@ -65,7 +75,8 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 	 		for(i in 1:bs_samples){
 	    		set.seed(i + seed)
 	    		sampDataEnv <- bs_sampleData(dataEnv, weights)
-				bsMat <- rbind(bsMat, getBS_coef(sampDataEnv, callText = callText))
+				bsMat <- rbind(bsMat, getBS_coef(sampDataEnv, 
+				                                 callText = callText, other_info = other_info))
 	    	}
 	    }
 	    else{
@@ -73,7 +84,9 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 	    					.combine = 'rbind') %dopar%{
 	    		set.seed(i)
 	    		sampDataEnv <- bs_sampleData(dataEnv, weights)
-				getBS_coef(sampDataEnv, callText = callText)
+				getBS_coef(sampDataEnv, callText = callText,
+				           other_info = other_info)
+
 	    	}
 	    }
    	 }
@@ -106,13 +119,13 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
     fitInfo$call = cl
     fitInfo$formula = formula
     fitInfo$.dataEnv <- new.env()
-    fitInfo$.dataEnv$data = data
+    if(!missing(data)){ fitInfo$.dataEnv$data = data }
     fitInfo$par = 'semi-parametric'
     fitInfo$model = model
     fitInfo$reg_pars <- fitInfo$coefficients
     fitInfo$terms <- mt
     fitInfo$xlevels <- .getXlevels(mt, mf)
-    class(fitInfo) <- c(callText, 'icenReg_fit', 'sp_fit')
+#    class(fitInfo) <- c(callText, 'icenReg_fit', 'sp_fit')
    return(fitInfo)
 }
 
@@ -375,7 +388,7 @@ impute_ic_ph <- function(formula, data, imps = 100, eta = 10^-10, rightCenVal = 
 simIC_weib <- function(n = 100, b1 = 0.5, b2 = -0.5, model = 'ph', 
 					   shape = 2, scale = 2, 
 					   inspections = 2, inspectLength = 2.5,
-					   rndDigits = NULL){
+					   rndDigits = NULL, prob_cen = 0.5){
 	rawQ <- runif(n)
     x1 <- rnorm(n)
     x2 <- 1 - 2 * rbinom(n, 1, 0.5)
@@ -415,6 +428,11 @@ simIC_weib <- function(n = 100, b1 = 0.5, b2 = -0.5, model = 'ph',
     u[needsCatch] <- Inf
     
     if(sum(l > u) > 0)	stop('warning: l > u! Bug in code')
+    
+    isCensored <- rbinom(n = n, size = 1, prob = prob_cen) == 1
+
+    l[!isCensored] <- trueTimes[!isCensored]
+    u[!isCensored] <- trueTimes[!isCensored]
     
     return(data.frame(l = l, u = u, x1 = x1, x2 = x2))
 }
@@ -472,9 +490,10 @@ diag_covar <- function(object, varName,
            factorSplit = TRUE, 
            numericCuts, col, 
            xlab, ylab, main, 
-           max_n_use = 10000, lgdLocation = NULL){
+           lgdLocation = NULL){
 	if(!yType %in% c('survival', 'transform', 'meanRemovedTransform')) stop("yType not recognized. Options = 'survival', 'transform' or 'meanRemovedTransform'")
-	subDataInfo <- subSampleData(data, max_n_use, weights)
+  max_n_use <- nrow(data) #for backward compability. No longer need max_n_use
+  subDataInfo <- subSampleData(data, max_n_use, weights)
 	data <- subDataInfo$data
 	weights <- subDataInfo$w
 	if(is.null(weights)) weights <- rep(1, nrow(data))
@@ -623,7 +642,6 @@ diag_covar <- function(object, varName,
 
 
 ic_par <- function(formula, data, model = 'ph', dist = 'weibull', weights = NULL){
-	if(missing(data)) stop('data argument required')
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
 #    m <- match(c("formula", "data", "subset", "weights", "na.action", "offset"), names(mf), 0L)
@@ -644,12 +662,15 @@ ic_par <- function(formula, data, model = 'ph', dist = 'weibull', weights = NULL
 		xNames <- xNames[-ind]
 	}
 		
-    yMat <- as.matrix(y)[,1:2]
+  yMat <- as.matrix(y)[,1:2]
+  
+  if(is(y, "Surv")){
     rightCens <- mf[,1][,3] == 0
-	yMat[rightCens,2] <- Inf
+	  yMat[rightCens,2] <- Inf
 	
-	exact <- mf[,1][,3] == 1
-	yMat[exact, 2] = yMat[exact, 1]
+	  exact <- mf[,1][,3] == 1
+	  yMat[exact, 2] = yMat[exact, 1]
+  }
     storage.mode(yMat) <- 'double'
     
     if(sum(is.na(mf)) > 0)
@@ -667,18 +688,20 @@ ic_par <- function(formula, data, model = 'ph', dist = 'weibull', weights = NULL
 	if(min(weights) < 0)				stop('negative weights not allowed!')
 	if(sum(is.na(weights)) > 0)			stop('cannot have weights = NA')
 	if(is.null(ncol(x))) recenterCovar = FALSE
-   	fitInfo <- fit_par(yMat, x, parFam = dist, link = model, leftCen = 0, rightCen = Inf, uncenTol = 10^-6, regnames = xNames, weights = weights)
+   	fitInfo <- fit_par(yMat, x, parFam = dist, link = model, 
+   	                   leftCen = 0, rightCen = Inf, uncenTol = 10^-6, 
+   	                   regnames = xNames, weights = weights,
+   	                   callText = callText)
 	fitInfo$call = cl
 	fitInfo$formula = formula
-    class(fitInfo) <- c(callText, 'icenReg_fit', 'par_fit')
-    fitInfo$.dataEnv = new.env()
-    fitInfo$.dataEnv$data = data
+  fitInfo$.dataEnv = new.env()
+  if(!missing(data)){ fitInfo$.dataEnv$data = data }
 	fitInfo$par = dist
 	fitInfo$model = model
-    fitInfo$terms <- mt
-    fitInfo$xlevels <- .getXlevels(mt, mf)
+  fitInfo$terms <- mt
+  fitInfo$xlevels <- .getXlevels(mt, mf)
 
-   return(fitInfo)
+  return(fitInfo)
 }
 
 getFitEsts <-function(fit, newdata, p, q){
@@ -743,14 +766,14 @@ getFitEsts <-function(fit, newdata, p, q){
 
 diag_baseline <- function(object, data, model = 'ph', weights = NULL,
 						  dists = c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic'),
-						  max_n_use = 10000, cols = NULL, lgdLocation = 'bottomleft',
+						  cols = NULL, lgdLocation = 'bottomleft',
 						  useMidCovars = T){
-						  	
 	newdata = NULL
 	if(useMidCovars) newdata <- 'midValues'
 	formula <- getFormula(object)
 	if(missing(data))	data <- getData(object)
-
+	max_n_use = nrow(data)	#no longer necessary, for backward compatability				  	
+	
 	subDataInfo <- subSampleData(data, max_n_use, weights)
 	sp_data <- subDataInfo$data
 	weights <- subDataInfo$w

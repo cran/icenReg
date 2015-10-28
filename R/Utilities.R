@@ -11,23 +11,36 @@ findMaximalIntersections <- function(lower, upper){
 }
 
 
-fit_ICPH <- function(obsMat, covars, callText = 'ic_ph', weights){
-	recenterCovars = TRUE
+fit_ICPH <- function(obsMat, covars, callText = 'ic_ph', weights, other_info){  # useGA, maxIter, baselineUpdates, useFullHess){
+  useGA <- other_info$useGA
+  maxIter <- other_info$maxIter
+  baselineUpdates <- other_info$baselineUpdates
+  useFullHess <- other_info$useFullHess
+  useExpSteps <- other_info$useExpSteps
+  recenterCovars = TRUE
 	if(getNumCovars(covars) == 0)	recenterCovars <- FALSE
 	mi_info <- findMaximalIntersections(obsMat[,1], obsMat[,2])
 	k = length(mi_info[['mi_l']])
 	covars <- as.matrix(covars)
-	if(callText == 'ic_ph')	fitType = as.integer(1)
-	else if(callText == 'ic_po') fitType = as.integer(2)
-	else stop('callText not recognized in fit_ICPH')
+	if(callText == 'ic_ph'){fitType = as.integer(1)}
+	else if(callText == 'ic_po'){fitType = as.integer(2)}
+	else {stop('callText not recognized in fit_ICPH')}
 	
 	if(recenterCovars){
 		pca_info <- prcomp(covars, scale. = TRUE)
 		covars <- as.matrix(pca_info$x)
 	}
 	
-	myFit <- .Call('ic_sp_ch', mi_info$l_inds, mi_info$r_inds, covars, fitType, as.numeric(weights)) 
-	names(myFit) <- c('p_hat', 'coefficients', 'final_llk', 'iterations', 'score')
+	c_ans <- .Call('ic_sp_ch', mi_info$l_inds, mi_info$r_inds, covars, fitType, as.numeric(weights), useGA, 
+	               as.integer(maxIter), as.integer(baselineUpdates),
+	               as.logical(useFullHess), as.logical(useExpSteps)) 
+	names(c_ans) <- c('p_hat', 'coefficients', 'final_llk', 'iterations', 'score')
+	myFit <- new(callText)
+	myFit$p_hat <- c_ans$p_hat
+	myFit$coefficients <- c_ans$coefficients
+	myFit$final_llk <- c_ans$final_llk
+	myFit$iterations <- c_ans$iterations
+	myFit$score <- c_ans$score
 	myFit[['T_bull_Intervals']] <- rbind(mi_info[['mi_l']], mi_info[['mi_r']])
 	myFit$p_hat <- myFit$p_hat / sum(myFit$p_hat) 
 	myFit$baseOffset <- 0
@@ -56,11 +69,12 @@ bs_sampleData <- function(rawDataEnv, weights){
 	return(sampEnv)
 }
 
-getBS_coef <- function(sampDataEnv, callText = 'ic_ph'){
+getBS_coef <- function(sampDataEnv, callText = 'ic_ph', other_info){ #useGA, maxIter, baselineUpdates){
 	xMat <- cbind(sampDataEnv$x,1)
 	invertResult <- try(diag(solve(t(xMat) %*% xMat )), silent = TRUE)
 	if(is(invertResult, 'try-error')) {return( rep(NA, ncol(xMat) -1) ) }
-	output <- fit_ICPH(sampDataEnv$y, sampDataEnv$x, callText, sampDataEnv$w)$coefficients
+	output <- fit_ICPH(sampDataEnv$y, sampDataEnv$x, callText, sampDataEnv$w, other_info)$coefficients
+	         #          useGA = useGA, maxIter = maxIter, baselineUpdates = baselineUpdates)$coefficients
 	return(output)
 }
 
@@ -70,15 +84,24 @@ expandX <- function(formula, data, fit){
 	Terms <- delete.response(tt)
 	 m <- model.frame(Terms, data, na.action = na.pass, xlev = fit$xlevels)
 	 x <- model.matrix(Terms, m)
-	 
-	 return(as.matrix(x[,-1]) )
+	 ans <- as.matrix(x[,-1])
+	 if(nrow(ans) != nrow(x)){
+	   ans <- t(ans)
+	   if(nrow(ans) != nrow(x) ){stop('nrow(ans) != nrow(x)')}
+	   if(ncol(ans) != (ncol(x) - 1) ) {stop('ncol(ans) != ncol(x) - 1')}
+	 }
+	 return(ans)
 }
 
 
 
 ###		PARAMETRIC FIT UTILITIES
 
-fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', leftCen = 0, rightCen = Inf, uncenTol = 10^-6, regnames, weights){
+fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', 
+                    leftCen = 0, rightCen = Inf, 
+                    uncenTol = 10^-6, regnames, 
+                    weights, callText){
+
 	recenterCovar <- FALSE
 	k_reg <- getNumCovars(x_mat)
 	if(k_reg > 0)	recenterCovar <- TRUE
@@ -145,11 +168,19 @@ fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', leftCen = 0, ri
 	
 	hessian <- matrix(numeric(), nrow = (k_reg + k_base), ncol = (k_reg + k_base))
 	
-	fit <- .Call('ic_par', s_t, d_t, x_mat_rearranged,
+	c_fit <- .Call('ic_par', s_t, d_t, x_mat_rearranged,
 				uncenInd_mat, gicInd_mat, leftCenInd, rightCenInd,
 				parInd, linkInd, hessian, as.numeric(w_reordered) )
 								
-	names(fit) <- c('reg_pars', 'baseline', 'final_llk', 'iterations', 'hessian', 'score')
+	names(c_fit) <- c('reg_pars', 'baseline', 'final_llk', 'iterations', 'hessian', 'score')
+	
+	fit <- new(callText)
+	fit$reg_pars <- c_fit$reg_pars
+	fit$baseline <- c_fit$baseline
+	fit$final_llk <- c_fit$final_llk
+	fit$iterations <- c_fit$iterations
+	fit$hessian <- c_fit$hessian
+	fit$score <- c_fit$score
 	
 	if(recenterCovar == TRUE){
 		fit$pca_coefs <- fit$reg_pars
@@ -464,7 +495,9 @@ getFormula <- function(object){
 }
 
 getData <- function(fit){
-	fit$.dataEnv$data
+	ans <- fit$.dataEnv$data
+	if(is.null(ans)) stop('Could not find data from fit. Original model must be built with data argument (rather than variables found in the Global Environment) supplied to be retreivable')
+	return(ans)
 }
 
 get_tbull_mid_q <- function(p, s_t, tbulls){
@@ -558,69 +591,6 @@ PCAFit2OrgParFit <- function(PCA_info, PCA_Hessian, PCA_parEsts, numIdPars){
 }
 
 
-###			Summary Class
-
-setRefClass('icenRegSummary',
-			fields = c('summaryParameters',
-					    'model', 
-					    'call', 
-					    'baseline',
-					    'sigFigs',
-					    'fullFit',
-					    'final_llk',
-					    'iterations',
-					    'other'),
-			methods = list(
-				initialize = function(fit){
-					sigFigs <<- 4
-					fullFit <<- fit
-					model  <<- if(fit$model == 'ph') 'Cox PH' else 'Proportional Odds'
-					baseline <<- fit$par
-					colNames <- c('Estimate', 'Exp(Est)', 'Std.Error', 'z-value', 'p')
-					coefs <- fit$coefficients
-					sumPars <- matrix(nrow = length(coefs), ncol = length(colNames))
-					se <- sqrt(diag(fit$var))
-					for(i in seq_along(coefs)){
-						sumPars[i,1] <- coefs[i]
-						sumPars[i,2] <- exp(coefs[i])
-						sumPars[i,3] <- se[i]
-						sumPars[i,4] <- coefs[i]/se[i]
-						sumPars[i,5] <- 2 * (1 - pnorm(abs(sumPars[i,4])))
-					}
-					colnames(sumPars) <- colNames
-					rownames(sumPars) <- names(coefs)
-					sumPars <- signif(sumPars, sigFigs)
-					summaryParameters <<- sumPars
-					call <<- fit$call
-					final_llk <<- fit$final_llk
-					iterations <<- fit$iterations
-					otherList <- list()
-					if(inherits(fit, 'sp_fit')){
-						otherList[['bs_samps']] <- max(c(nrow(fit$bsMat),0))
-					}
-					other <<- otherList
-				},
-				show = function(){
-					printSE <- TRUE
-					sampSizeWarn <- FALSE
-					if(baseline == 'semi-parametric'){
-						if(other[['bs_samps']] <= 1) printSE <- FALSE
-						if(other[['bs_samps']] < 100) sampSizeWarn <- TRUE
-					}
-					cat("\nModel: ", model, "\nBaseline: ", baseline, "\nCall: ")
-					print(call)
-					cat('\n')
-					printMat <- summaryParameters
-					if(!printSE) printMat <- printMat[,1:2]	
-					print(printMat)
-					cat('\nfinal llk = ', final_llk, '\nIterations = ', iterations, '\n')
-					if(inherits(fullFit, 'sp_fit')) cat('Bootstrap Samples = ', other[['bs_samps']], '\n')
-					if(sampSizeWarn){
-						cat("WARNING: only ", other[['bs_samps']], " bootstrap samples used for standard errors. Suggest using more bootstrap samples for inference\n")
-					}
-				}
-			)
-	)
 
 
 getNumCovars <- function(object){
