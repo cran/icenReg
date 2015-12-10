@@ -1,5 +1,5 @@
 ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, useMCores = F, seed = NULL,
-                  useGA = T, maxIter = 500, baseUpdates = 5){
+                  useGA = T, maxIter = 1000, baseUpdates = 5){
   useExpSteps = FALSE
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
@@ -126,6 +126,14 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
     fitInfo$terms <- mt
     fitInfo$xlevels <- .getXlevels(mt, mf)
 #    class(fitInfo) <- c(callText, 'icenReg_fit', 'sp_fit')
+    if(fitInfo$iterations == maxIter){
+      warning(paste0('Maximum iterations reached in ic_sp.', 
+              '\n\nCommon cause of problem is when many observations are uncensored in Cox-PH model',
+              '\nas this causes heavy numeric instability in gradient ascent step.', 
+              '\n(note:proportional odds model is more numerically stable).',
+              '\nICM step is still stable, so try increasing maxIter two fold and observe if', 
+              '\ndifference in final llk is less than 0.1. If not, increase maxIter until this occurs.'))
+    }
    return(fitInfo)
 }
 
@@ -156,61 +164,69 @@ getSCurves <- function(fit, newdata = NULL){
 		return(ans)
 	}
 	else{
-		if(missing(q))	stop('argument "q" required for getSCurves for parametric fits')
-		x <- q
-		s_fun <- get_s_fun(fit)
-		ans <- list(x = x, S_curves = list())
-		s <- numeric()
-		for(j in seq_along(x)){
-			s[j] <- s_fun(x[j], fit$baseline)
-		}
-		for(i in length(etas)){
-			ans[['S_curves']][[grpNames[i] ]] <- transFxn(s, etas[i])
-		}	
-		class(ans) <- 'par_curves'
-		return(ans)
+	  	stop('getSCurves only for semi-parametric model. Try getFitEsts')
+# 		x <- q
+# 		s_fun <- get_s_fun(fit)
+# 		ans <- list(x = x, S_curves = list())
+# 		s <- numeric()
+# 		for(j in seq_along(x)){
+# 			s[j] <- s_fun(x[j], fit$baseline)
+# 		}
+# 		for(i in length(etas)){
+# 			ans[['S_curves']][[grpNames[i] ]] <- transFxn(s, etas[i])
+# 		}	
+# 		class(ans) <- 'par_curves'
+# 		return(ans)
 	}
 }
 
 
-plot.icenReg_fit <- function(x, y, ...){
+plot.icenReg_fit <- function(x, y, fun = 'surv', lgdLocation = 'topright', xlab = "time",...){
 	if(inherits(x, 'impute_par_icph'))	stop('plot currently not supported for imputation model')
 	if(missing(y)) y <- list(...)$newdata	
 	newdata <- y
+  
+  if(fun == 'surv'){ s_trans <- function(x){x}; yName = 'S(t)'}
+  else if(fun == 'cdf'){s_trans <- function(x){1-x}; yName = 'F(t)'}
+  else stop('"fun" option not recognized. Choices are "surv" or "cdf"')
+  
 	if(x$par == 'semi-parametric'){
 		curveInfo <- getSCurves(x, y)
 		allx <- c(curveInfo$Tbull_ints[,1], curveInfo$Tbull_ints[,2])
 		dummyx <- range(allx, finite = TRUE)
 		dummyy <- c(0,1)
 	
-		plot(dummyx, dummyy, xlab = 'time', ylab = 'S(t)', ..., type = 'n')
+		plot(dummyx, dummyy, xlab = xlab, ylab = yName, ..., type = 'n')
 		x_l <- curveInfo$Tbull_ints[,1]
 		x_u <- curveInfo$Tbull_ints[,2]
 		k <- length(x_l)
 		ss <- curveInfo$S_curves
 		
 		for(i in 1:length(ss)){
-			lines(x_l, ss[[i]], col = i, type = 's')
-			lines(x_u, ss[[i]], col = i, type = 's')
-			lines(c(x_l[k], x_u[k]), c(ss[[i]][k], ss[[i]][k]), col = i)
+			lines(x_l, s_trans(ss[[i]]), col = i, type = 's')
+			lines(x_u, s_trans(ss[[i]]), col = i, type = 's')
+			lines(c(x_l[k], x_u[k]), s_trans(c(ss[[i]][k], ss[[i]][k])), col = i)
 		}
 		if(length(ss) > 1){
 			grpNames <- names(ss)
-			legend('topright', legend = grpNames, lwd = rep(1, length(grpNames) ), col = 1:length(ss))
+			legend(lgdLocation, legend = grpNames, lwd = rep(1, length(grpNames) ), col = 1:length(ss))
 		}
 	}
 	else if(inherits(x, 'par_fit')){
-		ranges <- getFitEsts(x, newdata = newdata, p = c(0.05, 0.95) )
-		plot(NA, xlim = range(as.numeric(ranges), finite = TRUE), ylim = c(0,1), xlab = 'time', ylab = 'S(t)')
-		ranges <- getFitEsts(x, newdata = newdata, p = c(0.005, 0.995) )
-		for(i in 1:ncol(ranges)){
-			grid = ranges[1,i] + 0:100/100 * (ranges[2,i] - ranges[1,i])
+    ranges <- matrix(nrow = nrow(newdata), ncol = 2)
+		ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.05 )
+    ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.95 )
+		plot(NA, xlim = range(as.numeric(ranges), finite = TRUE), ylim = c(0,1), xlab = xlab, ylab = yName)
+		ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.005 )
+		ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.995 )
+		for(i in 1:nrow(ranges)){
+			grid = ranges[i,1] + 0:100/100 * (ranges[i,2] - ranges[i,1])
 			est.s <- 1 - getFitEsts(x, newdata = subsetData_ifNeeded(i, newdata), q = grid)
-			lines(grid, est.s, col = i)
+			lines(grid, s_trans(est.s), col = i)
 		}
 		if(ncol(ranges) > 1){
 			grpNames <- rownames(newdata)
-			legend('topright', legend = grpNames, lwd = rep(1, length(grpNames) ), col = 1:ncol(ranges))
+			legend(lgdLocation, legend = grpNames, lwd = rep(1, length(grpNames) ), col = 1:ncol(ranges))
 		}
 	}
 }
@@ -390,7 +406,7 @@ simIC_weib <- function(n = 100, b1 = 0.5, b2 = -0.5, model = 'ph',
 					   inspections = 2, inspectLength = 2.5,
 					   rndDigits = NULL, prob_cen = 0.5){
 	rawQ <- runif(n)
-    x1 <- rnorm(n)
+    x1 <- runif(n, -1, 1)
     x2 <- 1 - 2 * rbinom(n, 1, 0.5)
     nu <- exp(x1 * b1 + x2 * b2)
     
@@ -434,6 +450,12 @@ simIC_weib <- function(n = 100, b1 = 0.5, b2 = -0.5, model = 'ph',
     l[!isCensored] <- trueTimes[!isCensored]
     u[!isCensored] <- trueTimes[!isCensored]
     
+    if(sum(l == Inf) > 0){
+      allTimes <- c(l,u)
+      allFiniteTimes <- allTimes[allTimes < Inf]
+      maxFiniteTime <- max(allFiniteTimes)
+      l[l == Inf] <- maxFiniteTime
+    }
     return(data.frame(l = l, u = u, x1 = x1, x2 = x2))
 }
 
@@ -492,6 +514,10 @@ diag_covar <- function(object, varName,
            xlab, ylab, main, 
            lgdLocation = NULL){
 	if(!yType %in% c('survival', 'transform', 'meanRemovedTransform')) stop("yType not recognized. Options = 'survival', 'transform' or 'meanRemovedTransform'")
+  if(missing(data)){
+    if(!is(object, 'icenReg_fit')) stop("either object must be icenReg_fit, or formula with data supplied")
+    data <- object$getRawData()
+  }
   max_n_use <- nrow(data) #for backward compability. No longer need max_n_use
   subDataInfo <- subSampleData(data, max_n_use, weights)
 	data <- subDataInfo$data
@@ -704,7 +730,44 @@ ic_par <- function(formula, data, model = 'ph', dist = 'weibull', weights = NULL
   return(fitInfo)
 }
 
-getFitEsts <-function(fit, newdata, p, q){
+getFitEsts <- function(fit, newdata, p, q){
+  if(missing(newdata)) newdata <- NULL
+  etas <- get_etas(fit, newdata)
+  
+  if(missing(p))	p <- NULL
+  if(missing(q))  q <- NULL
+  if(!is.null(q)) {xs <- q; type = 'q'}
+  else{ 
+    type = 'p'
+    if(is.null(p)) xs <- 0.5
+    else		   xs <- p
+  }
+  
+  if(length(etas) == 1){etas <- rep(etas, length(xs))}
+  if(length(xs) == 1){xs <- rep(xs, length(etas))}
+  if(length(etas) != length(xs) ) stop('length of p or q must match nrow(newdata) OR be 1')
+
+  regMod <- fit$model
+  
+  if(inherits(fit, 'sp_fit'))	{
+    scurves <- getSCurves(fit, newdata = NULL)
+    baselineInfo <- list(tb_ints = scurves$Tbull_ints, s = scurves$S_curves$baseline)
+    baseMod = 'sp'
+  }
+  if(inherits(fit, 'par_fit')){	
+    baseMod <- fit$par
+    baselineInfo <- fit$baseline
+  }
+  if(type == 'q')
+    ans <- getSurvProbs(xs, etas, baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
+  else if(type == 'p')
+    ans <- getSurvTimes(xs, etas, baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
+  return(ans)
+}
+
+
+
+getFitEsts_OLD <-function(fit, newdata, p, q){
 	if(missing(newdata)) newdata <- NULL
 	etas <- get_etas(fit, newdata)
 
@@ -717,24 +780,32 @@ getFitEsts <-function(fit, newdata, p, q){
 		else		   xs <- p
 	}
 	
+	if(length(etas) == 1){etas <- rep(etas, length(xs))}
+	if(length(xs) == 1){xs <- rep(xs, length(etas))}
+	if(length(etas) != length(xs) ) stop('length of p or q must match nrow(newdata) OR be 1')
+	
 	if(inherits(fit, 'sp_fit'))	{
 		scurves <- getSCurves(fit, newdata)
-		ans <- matrix(nrow = length(xs), ncol = length(etas))
-		colnames(ans) <- names(scurves$S_curves)
+#		ans <- matrix(nrow = length(xs), ncol = length(etas))
+		ans <- numeric()
+#		colnames(ans) <- names(scurves$S_curves)
 				
 		for(i in 1:length(etas)){
-			if(type == 'p') ans[,i] <- get_tbull_mid_q(xs, scurves[[2]][[i]], scurves[[1]])
-			else ans[,i] 			<- get_tbull_mid_p(xs, scurves[[2]][[i]], scurves[[1]])
-	
+# 			if(type == 'p') ans[,i] <- get_tbull_mid_q(xs, scurves[[2]][[i]], scurves[[1]])
+# 			else ans[,i] 			<- get_tbull_mid_p(xs, scurves[[2]][[i]], scurves[[1]])
+		  if(type == 'p') ans[i] <- get_tbull_mid_q(xs[i], scurves[[2]][[i]], scurves[[1]])
+		  else ans[i] 			<- get_tbull_mid_p(xs[i], scurves[[2]][[i]], scurves[[1]])
+		  
 		}
 		return(ans)
 	}
 	if(inherits(fit, 'par_fit')){	
 		s_fun <- get_s_fun(fit)
 		link_fun <- get_link_fun(fit)
-		ans <- matrix(nrow = length(xs), ncol = length(etas))
-		colnames(ans) <- names(etas)
-		rownames(ans) <- xs
+#		ans <- matrix(nrow = length(xs), ncol = length(etas))
+		ans <- numeric()
+#		colnames(ans) <- names(etas)
+#		rownames(ans) <- xs
 		if(type == 'p'){
 			optimReadyFun <- function(x, p, baselinePars, eta, s_fun, link_fun){
 				s_o <- s_fun(x, baselinePars)
@@ -743,29 +814,59 @@ getFitEsts <-function(fit, newdata, p, q){
 				return( (f-p)^2 )
 			}	
 			
-			for(i in 1:length(xs)){
-				for(j in 1:length(etas)){
-					upperBound <- findUpperBound(xs[i], s_fun, link_fun, fit, etas[j])
-					ans[i,j] <- optimize(optimReadyFun, interval = c(0, upperBound), 
-									p = xs[i], baselinePars = fit$baseline,
-									etas[j], s_fun, link_fun, tol = 10^-6)$minimum
-				
-				}
+# 			for(i in 1:length(xs)){
+# 				for(j in 1:length(etas)){
+# 					upperBound <- findUpperBound(xs[i], s_fun, link_fun, fit, etas[j])
+# 					ans[i,j] <- optimize(optimReadyFun, interval = c(0, upperBound), 
+# 									p = xs[i], baselinePars = fit$baseline,
+# 									etas[j], s_fun, link_fun, tol = 10^-6)$minimum
+# 				
+# 				}
+# 			}
+			upperBound = 1
+			
+			applyFUN <- function(i, xs, link_fun, s_fun, baseline, etas){
+			  upperBound <- findUpperBound(upperBound,xs[i], s_fun, link_fun, fit, etas[i])
+			   optimize(optimReadyFun, interval = c(0, upperBound), 
+			                     p = xs[i], baselinePars = fit$baseline,
+			                     etas[i], s_fun, link_fun, tol = 10^-6)$minimum
 			}
-		return(ans)
+			ans <- sapply(1:length(xs), FUN = applyFUN, 
+			              xs = xs, etas = etas, 
+			              link_fun = link_fun, s_fun = s_fun,
+			              baseline = fit$baseline)
+			
+			
+# 			for(i in 1:length(xs)){
+# 			    upperBound <- findUpperBound(upperBound,xs[i], s_fun, link_fun, fit, etas[i])
+# 			    ans[i] <- optimize(optimReadyFun, interval = c(0, upperBound), 
+# 			                         p = xs[i], baselinePars = fit$baseline,
+# 			                         etas[i], s_fun, link_fun, tol = 10^-6)$minimum
+# 			    
+# 			}
+			return(ans)
 		}
 		
-		for(i in 1:length(xs)){
-			for(j in 1:length(etas))
-				ans[i,j] <- 1-link_fun(s_fun(xs[i], fit$baseline), etas[j])
-		}
+# 		for(i in 1:length(xs)){
+# 			for(j in 1:length(etas))
+# 				ans[i,j] <- 1-link_fun(s_fun(xs[i], fit$baseline), etas[j])
+# 		}
+  
+		applyFUN <- function(i, xs, link_fun, s_fun, baseline, etas){ 1 - link_fun(s_fun(xs[i], baseline), etas[i])}
+		ans <- sapply(1:length(xs), FUN = applyFUN, 
+		              xs = xs, etas = etas, 
+		              link_fun = link_fun, s_fun = s_fun,
+		              baseline = fit$baseline)
+# 		for(i in 1:length(xs)){
+# 		    ans[i] <- 1-link_fun(s_fun(xs[i], fit$baseline), etas[i])
+# 		}
 		return(ans)
 	}
 	stop('getFitEsts not currently supported for this object')
 }
 
 diag_baseline <- function(object, data, model = 'ph', weights = NULL,
-						  dists = c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic'),
+						  dists = c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic', 'generalgamma'),
 						  cols = NULL, lgdLocation = 'bottomleft',
 						  useMidCovars = T){
 	newdata = NULL
@@ -790,4 +891,132 @@ diag_baseline <- function(object, data, model = 'ph', weights = NULL,
 		lines(grid, 1 - y, col = cols[i])
 	}
 	legend(lgdLocation, legend = c('Semi-parametric', dists), col = c('black', cols), lwd = 1)
+}
+
+predict.icenReg_fit <- function(object, type = 'response',
+                                newdata = NULL, ...)
+      #imputeOptions = fullSample, fixedParSample, median
+  {
+  if(is.null(newdata)) newdata <- object$getRawData()
+  if(type == 'lp')
+    return( log(get_etas(object, newdata = newdata)))
+  if(type == 'response')
+    return(getFitEsts(fit = object, newdata = newdata))
+  stop('"type" not recognized: options are "lp", "response" and "impute"')
+}
+
+
+imputeCens<- function(fit, newdata = NULL, imputeType = 'fullSample', numImputes = 5){
+  if(is.null(newdata)) newdata <- fit$getRawData()
+  yMat <- expandY(fit$formula, newdata, fit)
+  p1 <- getFitEsts(fit, newdata, q = as.numeric(yMat[,1]) ) 
+  p2 <- getFitEsts(fit, newdata, q = as.numeric(yMat[,2]) ) 
+  ans <- matrix(nrow = length(p1), ncol = numImputes)
+  storage.mode(ans) <- 'double'
+  if(imputeType == 'median'){
+    p_med <- (p1 + p2)/2
+    ans <- getFitEsts(fit, newdata, p = p_med)
+    isLow <- ans < yMat[,1]
+    ans[isLow] <- yMat[isLow,1]
+    isHi <- ans > yMat[,2]
+    ans[isHi] <- yMat[isHi]
+    return()
+  }
+  if(imputeType == 'fixedParSample'){
+    for(i in 1:numImputes){
+      p_samp <- runif(length(p1), p2, p1)
+      theseImputes <- getFitEsts(fit, newdata, p = p_samp)
+      isLow <- theseImputes < yMat[,1]
+      theseImputes[isLow] <- yMat[isLow,1]
+      isHi <- theseImputes > yMat[,2]
+      theseImputes[isHi] <- yMat[isHi,2]
+      ans <- fastMatrixInsert(theseImputes, ans, colNum = i)
+    }
+    return(ans)
+  }
+  if(imputeType == 'fullSample'){
+    isSP <- is(fit, 'sp_fit')
+    for(i in 1:numImputes){
+      orgCoefs <- getSamplablePars(fit)
+      if(!isSP){
+        coefVar <- getSamplableVar(fit)
+        sampledCoefs <- sampPars(orgCoefs, coefVar)
+      }
+      else{
+        sampledCoefs <- getBSParSample(fit)
+      }
+      setSamplablePars(fit, sampledCoefs)
+      p1 <- getFitEsts(fit, newdata, q = as.numeric(yMat[,1]) ) 
+      p2 <- getFitEsts(fit, newdata, q = as.numeric(yMat[,2]) ) 
+      p_samp <- runif(length(p1), p1, p2)
+      theseImputes <- getFitEsts(fit, newdata, p = p_samp)
+      isLow <- theseImputes < yMat[,1]
+      theseImputes[isLow] <- yMat[isLow,1]
+      isHi <- theseImputes > yMat[,2]
+      theseImputes[isHi] <- yMat[isHi,2]
+      fastMatrixInsert(theseImputes, ans, colNum = i)
+      setSamplablePars(fit, orgCoefs)
+    }
+    return(ans)
+  }
+  stop('imputeType type not recognized.')
+}
+
+plot.sp_curves <- function(x, sname = 'baseline', xRange = NULL, ...){
+  if(is.null(xRange))
+    xRange <- range(c(x[[1]][,1], x[[1]][,2]), finite = TRUE)
+  plot(NA, xlim = xRange, ylim = c(0,1), ...)
+  lines(x, sname = sname, ...)
+}
+
+lines.sp_curves <- function(x, sname = 'baseline',...){
+  firstTimeObs <- x[[1]][1,1]
+  firstTimeAssume <- firstTimeObs
+  if(firstTimeObs > 0)
+    firstTimeAssume <- 0
+  lines(c(firstTimeAssume, firstTimeObs), c(1,1), ...)
+  lines(x[[1]][,1], x[[2]][[sname]], ..., type = 's')
+  lines(x[[1]][,2], x[[2]][[sname]], ..., type = 's')
+  lastObs <- nrow(x[[1]])
+  lastTimes <- x[[1]][lastObs,]
+  if(lastTimes[2] == Inf) lastTimes[2] <- lastTimes[1]
+  lastTimes[2] <- lastTimes[2] + (lastTimes[2] - firstTimeObs)
+  lines(lastTimes, c(0,0), ... ) 
+}
+
+dGeneralGamma <- function(x, mu, s, Q){
+  max_n <- getMaxLength(list(x, mu, s, Q) )
+  x <- updateDistPars(x, max_n)
+  mu <- updateDistPars(mu, max_n)
+  s <- updateDistPars(s, max_n)
+  Q <- updateDistPars(Q, max_n)
+  
+  ans <- .Call('dGeneralGamma', x, mu, s, Q)
+  return(ans)
+}
+
+qGeneralGamma <- function(p, mu, s, Q){
+  x <- p
+  max_n <- getMaxLength(list(x, mu, s, Q) )
+  x <- updateDistPars(x, max_n)
+  mu <- updateDistPars(mu, max_n)
+  s <- updateDistPars(s, max_n)
+  Q <- updateDistPars(Q, max_n)
+  
+  ans <- .Call('qGeneralGamma', x, mu, s, Q)
+  return(ans)
+  
+}
+
+pGeneralGamma <- function(q, mu, s, Q){
+  x <- q
+  max_n <- getMaxLength(list(x, mu, s, Q) )
+  x <- updateDistPars(x, max_n)
+  mu <- updateDistPars(mu, max_n)
+  s <- updateDistPars(s, max_n)
+  Q <- updateDistPars(Q, max_n)
+  
+  ans <- .Call('qGeneralGamma', x, mu, s, Q)
+  return(ans)
+  
 }

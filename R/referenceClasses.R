@@ -19,6 +19,9 @@ icenReg_fit <- setRefClass(Class = 'icenReg_fit',
                        methods = list(
                          show = function(){
                            print(summary(.self) ) 
+                         },
+                         getRawData = function(){
+                           return(.self$.dataEnv$data)
                          }
                        )
                        )
@@ -44,7 +47,7 @@ par_fit <- setRefClass(Class = 'par_fit',
                                   ))
 
 surv_trans_models <- c('po', 'ph')
-parametricFamilies <- c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic')
+parametricFamilies <- c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic', 'generalgamma')
 
 for(mod in surv_trans_models){
   for(fam in parametricFamilies)
@@ -111,7 +114,7 @@ setRefClass('icenRegSummary',
                 cat('\nfinal llk = ', final_llk, '\nIterations = ', iterations, '\n')
                 if(inherits(fullFit, 'sp_fit')) cat('Bootstrap Samples = ', other[['bs_samps']], '\n')
                 if(sampSizeWarn){
-                  cat("WARNING: only ", other[['bs_samps']], " bootstrap samples used for standard errors. Suggest using more bootstrap samples for inference\n")
+                  cat("WARNING: only ", other[['bs_samps']], " bootstrap samples used for standard errors. \nSuggest using more bootstrap samples for inference\n")
                 }
               }
             )

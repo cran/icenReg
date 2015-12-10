@@ -93,8 +93,32 @@ expandX <- function(formula, data, fit){
 	 return(ans)
 }
 
+removeSurvFromFormula <- function(formula, ind = 2){ 
+  if(formula[[ind]][[1]] == 'Surv'){
+    if(formula[[ind]][[4]] != 'interval2') stop('Surv type not "interval2" in formula')
+    formula[[ind]][[1]] <- as.name('cbind')
+    formula[[ind]][[4]] <- NULL
+  }
+  return(formula)
+}
 
+expandY <- function(formula, data, fit){
+  if(is.null(data)) data <- fit$getRawData()
+  newFormula <- formula
+  newFormula[[3]] <- newFormula[[2]]
+  newFormula[[2]] <- NULL
+  newFormula <- removeSurvFromFormula(newFormula, 2)
+  ans <- model.matrix(newFormula, data)
+  ans <- ans[,-1] #Dropping Intercept
+  return(ans)
+}
 
+getResponse <- function(fit, newdata = NULL){
+  if(is.null(newdata))
+    newdata = fit$getRawData()
+  ans <- expandY(fit$formula, newdata, fit)
+  return(ans)
+}
 ###		PARAMETRIC FIT UTILITIES
 
 fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', 
@@ -158,6 +182,7 @@ fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po',
 	else if(parFam == 'lnorm') {parInd = as.integer(3); k_base = 2; bnames = c('mu', 'log_s')}
 	else if(parFam == 'exponential') {parInd = as.integer(4); k_base = 1; bnames = 'log_scale'}
 	else if(parFam == 'loglogistic') {parInd = as.integer(5); k_base = 2; bnames = c('log_alpha', 'log_beta')}
+  else if(parFam == 'generalgamma') {parInd = as.integer(6); k_base = 3; bnames = c('mu', 'log_s', 'Q')}
 	else stop('parametric family not supported')
 
 	hessnames = c(bnames, regnames)
@@ -449,13 +474,12 @@ get_link_fun <- function(fit){
 }
 
 
-findUpperBound <- function(x, s_fun, link_fun, fit, eta){
-	val <- 1
+findUpperBound <- function(val = 1, x, s_fun, link_fun, fit, eta){
 	fval <- 1 - link_fun(s_fun(val, fit$baseline), eta)
 	tries = 0
 	while(tries < 100 & fval < x){
 		tries = tries + 1
-		val <- val * 2
+		val <- val * 10
 		fval <- 1 - link_fun(s_fun(val, fit$baseline), eta)
 	}
 	if(fval < x)	stop('finding upper bound for quantile failed!')
@@ -495,7 +519,7 @@ getFormula <- function(object){
 }
 
 getData <- function(fit){
-	ans <- fit$.dataEnv$data
+	ans <- fit$getRawData()
 	if(is.null(ans)) stop('Could not find data from fit. Original model must be built with data argument (rather than variables found in the Global Environment) supplied to be retreivable')
 	return(ans)
 }
@@ -601,4 +625,109 @@ getNumCovars <- function(object){
   }
   if(length(dimAns) == 2) return(dimAns[2])
   stop('problem with getNumCovars')
+}
+
+
+
+regmod2int <- new.env()
+regmod2int[['ph']] <- as.integer(1)
+regmod2int[['po']] <- as.integer(2)
+
+basemod2int <- new.env()
+basemod2int[['sp']] <- as.integer(0)
+basemod2int[['gamma']] <- as.integer(1)
+basemod2int[['weibull']] <- as.integer(2)
+basemod2int[['weib']] <- as.integer(2)
+basemod2int[['lnorm']] <- as.integer(3)
+basemod2int[['exponential']] <- as.integer(4)
+basemod2int[['loglogistic']] <- as.integer(5)
+basemod2int[['generalgamma']] <- as.integer(6)
+
+getSurvProbs <- function(times, etas, baselineInfo, regMod, baseMod){
+  regInt <- regmod2int[[regMod]]
+  if(is.null(regInt)) stop('regMod type not recognized')
+  baseInt <- basemod2int[[baseMod]]
+  if(is.null(baseInt)) stop('baseMod type not recognized')
+  ans <- .Call('s_regTrans', as.double(times), as.double(etas), baselineInfo, regInt, baseInt)
+  return(ans)
+}
+
+getSurvTimes <- function(p, etas, baselineInfo, regMod, baseMod){
+  if(any(p < 0))
+    stop('probabilities provided to getSurvTimes are less than 0')
+  if(any(p > 1))
+    stop('probabilities provided to getSurvTimes are greater than 1')
+  regInt <- regmod2int[[regMod]]
+  if(is.null(regInt)) stop('regMod type not recognized')
+  baseInt <- basemod2int[[baseMod]]
+  if(is.null(baseInt)) stop('baseMod type not recognized')
+  ans <- .Call('q_regTrans', as.double(p), as.double(etas), baselineInfo, regInt, baseInt)
+  return(ans)
+}
+
+
+getSamplablePars <- function(fit){
+  if(is(fit, 'sp_fit')) return(fit$coefficients)
+  else if(is(fit, 'par_fit')) return(fit$coefficients)
+}
+
+getSamplableVar <- function(fit){
+  ans <- fit$var
+  if(is.null(ans))  stop('coefficient variance not found for fit. If ic_ph model was fit, make sure to set bs_samples > 100 to get bootstrap sample of variance')
+  return(ans)
+}
+
+sampPars <- function(mean, var){
+  chol_var <- chol(var)
+  k <- length(mean)
+  ans <- rnorm(k) %*% chol_var + mean
+  return(ans)
+}
+
+getBSParSample <- function(fit){
+  nBS_samps <- nrow(fit$bsMat)
+  if(is.null(nBS_samps) ){
+    stop('no bootstrap samples generated so cannot sample parameter values')
+  }
+  thisInd <- sample(1:nBS_samps, 1)
+  return(fit$bsMat[thisInd, ] )
+}
+
+setSamplablePars <- function(fit, coefs){
+  fit$coefficients <- coefs
+}
+
+
+fastNumericInsert <- function(newVals, target, indices){
+  if(storage.mode(newVals) != 'double') storage.mode(newVals) <- 'double'
+  if(storage.mode(target) != 'double') stop('target of fastNumericInsert MUST have storage.mode = "double"')
+  if(storage.mode(indices) != 'integer') storage.mode(indices) <- 'integer'
+  
+  invisible(.Call('fastNumericInsert', newVals, target, indices) )
+}
+
+fastMatrixInsert <- function(newVals, targMat, rowNum = NULL, colNum = NULL){
+  if(is.null(colNum)){
+    if(is.null(rowNum)) stop('need either rowNum or colNum')
+    newIndices <- (1:length(newVals)-1) * nrow(targMat) + rowNum 
+    return(fastNumericInsert(newVals, targMat, newIndices))
+  }
+  newIndices <- 1:length(newVals) + (colNum - 1) * nrow(targMat)
+  fastNumericInsert(newVals, targMat, newIndices)
+}
+
+updateDistPars <- function(vals, max_n){
+  vals <- as.numeric(vals)
+  n_v <- length(vals)
+  if(n_v == 1){
+    return(rep(vals, max_n))
+  }
+  if(n_v != max_n) stop('parameters are not of equal length (or 1)')
+  return(vals)
+}
+
+getMaxLength <- function(thisList){
+  n <- 0
+  for(i in seq_along(thisList)) n <- max(c(n, length(thisList[[i]] ) ) )
+  return(n)
 }

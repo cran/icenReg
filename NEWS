@@ -1,4 +1,15 @@
+
 UPDATES:
+v1.3.0 
+getFitEsts is much faster
+added predict function
+added imputeCens function
+added generalized gamma distribution to choice of parametric families
+added imputed cross validation
+added plot method for sp_curves
+numerically stabilized ic_sp(model = 'ph')
+
+
 v1.2.8
 Resolved issue of licenses and gave proper credit to the Eigen team for 
 using their code for matrix algebra

@@ -50,8 +50,18 @@ double icm_Abst::par_llk(int ind){
 
 void icm_Abst::update_etas(){
     etas = covars * reg_par;
-    for(int i = 0; i < etas.size(); i++)
-        expEtas[i] = exp(etas[i]);
+    for(int i = 0; i < etas.size(); i++){
+		etas[i] += intercept;
+        expEtas[i] = exp(etas[i] );
+	}
+}
+
+
+void icm_Abst::recenterBCH(){
+	int k = baseCH.size();
+	for(int i = 1; i < (k-1); i++){
+		baseCH[i] += intercept;
+	}
 }
 
 void cumhaz2p_hat(Eigen::VectorXd &ch, vector<double> &p){
@@ -83,7 +93,9 @@ void setup_icm(SEXP Rlind, SEXP Rrind, SEXP RCovars, SEXP R_w, icm_Abst* icm_obj
     icm_obj->etas.resize(n);
     icm_obj->expEtas.resize(n);
     icm_obj->w.resize(n);
-    
+    	
+	icm_obj->intercept = 0.0;
+	
     for(int i = 0; i < n; i++){
         icm_obj->etas[i]       = 0;
         icm_obj->expEtas[i]    = 1;
@@ -241,7 +253,8 @@ void icm_Abst::icm_step(){
     for(int i = 0; i < thisSize; i ++){
         if(d2[i] == R_NegInf){d2[i] = -almost_inf;}
         if(ISNAN(d2[i]))    {Rprintf("warning: d2 isnan!\n"); return;}
-        if(d2[i] >= 0)      {Rprintf("warning: invalid d2 in icm step. i = %d, d2 = %f. Re-adjusting icm step\n", i, d2[i]);
+        if(d2[i] >= 0) {
+			//Rprintf("warning: invalid d2 in icm step. i = %d, d2 = %f. Re-adjusting icm step\n", i, d2[i]);
             int sum_neg = 0;
             double sum_neg_d2s = 0.0;
             for(int j = 0; j < thisSize; j++){
@@ -420,6 +433,12 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w, SEXP
     icm_Abst* optObj;
     bool useGD = LOGICAL(R_use_GD)[0] == TRUE;
     bool useExpSteps = LOGICAL(R_useExpSteps)[0] == TRUE;
+	
+	bool printDeltaLLK = false;
+	
+	double llk2, llk1;
+	llk2 = R_NegInf;
+	
     if(INTEGER(fitType)[0] == 1){
         optObj = new icm_ph;
     }
@@ -437,27 +456,63 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w, SEXP
     
     
     bool metOnce = false;
-    double tol = pow(10, -10);
+    double tol = pow(10.0, -10.0);
     int maxIter = INTEGER(R_maxiter)[0];
     int baselineUpdates = INTEGER(R_baselineUpdates)[0];
     while(optObj->iter < maxIter && (llk_new - llk_old) > tol){
         optObj->iter++;
         llk_old = llk_new;
-        if(optObj->hasCovars)       optObj->covar_nr_step();
+		
+		if(printDeltaLLK){
+			llk2 = llk_new;
+		}
+		
+        if(optObj->hasCovars){ 
+			optObj->covar_nr_step();
+			if(printDeltaLLK){
+				llk1 = llk2;
+				llk2 = optObj->sum_llk();
+				Rprintf("covar update = %f  ", llk2 - llk1);
+			}
+		}
 
         for(int i = 0; i < baselineUpdates; i++)  {
-            optObj->icm_step();
-            if(useGD){
-                optObj->gradientDescent_step();
+			
+			optObj->stablizeBCH();
+			
+            if(i < optObj->iter){
+                optObj->icm_step();
+				if(printDeltaLLK){
+					llk1 = llk2;
+					llk2 = optObj->sum_llk();
+					Rprintf("icm update = %f  ", llk2 - llk1);
+				}	
+                if(useGD){
+                    optObj->gradientDescent_step();
+					if(printDeltaLLK){
+						llk1 = llk2;
+						llk2 = optObj->sum_llk();
+						Rprintf("GD update = %f  ", llk2 - llk1);
+					}	
+					
+                }
+                if(useExpSteps){
+        //         optObj->vem();
+        //         optObj->last_p_update();
+        //         optObj->vem_sweep();
+                   optObj->vem_sweep2();
+					if(printDeltaLLK){
+						llk1 = llk2;
+						llk2 = optObj->sum_llk();
+						Rprintf("Experimental update = %f  ", llk2 - llk1);
+					}	
+					
+                }
+				
             }
-            if(useExpSteps){
-       //         optObj->vem();
-       //         optObj->last_p_update();
-       //         optObj->vem_sweep();
-                optObj->vem_sweep2();
-            }
-
+			
         }
+		if(printDeltaLLK){Rprintf("\n");}	
         llk_new = optObj->sum_llk();
         
         if(llk_new - llk_old > tol){metOnce = false;}
@@ -480,6 +535,9 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w, SEXP
 //    Rprintf("Number of failed GA attempts = %d, as a percent of attempts = %f, num total = %d\n", optObj->failedGA_counts, propFailGA, totGAIts);
     
     vector<double> p_hat;
+	
+	optObj->recenterBCH();
+	
     cumhaz2p_hat(optObj->baseCH, p_hat);
     
     
