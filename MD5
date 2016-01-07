@@ -1,6 +1,6 @@
-64e76743778998af2b6275b8294f5327 *DESCRIPTION
+2ff8bb508a6ab76d2fee5b164fabea61 *DESCRIPTION
 577e8e9c510c5654f31b5caf493528f8 *NAMESPACE
-e84e3efdb8c8cc93751db3fcd8f5ed6d *NEWS
+b8796e1d189d984b24f2434767d91c25 *NEWS
 c736634c2d576e18e0d783e4af061bda *R/Utilities.R
 b85a51774b14a869d580c7a70585fa78 *R/icenReg_CV.R
 fb7fa8ebd8539230f8b5944b390122df *R/optCliq.R
@@ -295,12 +295,12 @@ cbd65be692bfa660e5c49b7f72cb923a *src/Eigen_local/src/plugins/CommonCwiseBinaryO
 4843954ba3b8c594000d7ba1db8a5328 *src/icenReg_files/basicUtilities.cpp
 a66278399185d977a7cb403c63afe49b *src/icenReg_files/bivariateNPMLE.cpp
 40b1f1dfdd667c7f68d21fd1ba17c181 *src/icenReg_files/bivariateNPMLE.h
-92bba148227948f0dc5bd36782fe482f *src/icenReg_files/experimentalCode.cpp
+2df9306163e5e1ed8069d6fb8ab341cd *src/icenReg_files/experimentalCode.cpp
 eebc3b240245b47b5487c40b43c17e84 *src/icenReg_files/ic_par.cpp
 82790fcfcbfc55417d4709f9c17f7997 *src/icenReg_files/ic_par.h
-d3681152571ef33626ca5b834785a5ad *src/icenReg_files/ic_sp_ch.cpp
+c0fa6b08910513f234bd8823d370e7e5 *src/icenReg_files/ic_sp_ch.cpp
 b081a273f294e272a6e0f2b219fe7dbb *src/icenReg_files/ic_sp_ch.h
 b508e6639a1c7a8bfefe7d43ca610191 *src/icenReg_files/ic_sp_gradDescent.cpp
 0287d3e966fb42312444172a62ab5dbf *src/icenReg_files/myPAVAalgorithm.cpp
-54554ef645cb512de33758211c62b500 *src/icenReg_files/regressionTransforms.cpp
+14cfb27c54df4ad3d084861db281342f *src/icenReg_files/regressionTransforms.cpp
 af2c6eedc19bad283b1826a8a68f8418 *src/icenReg_files/regressionTransforms.h
