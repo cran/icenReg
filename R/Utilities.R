@@ -11,18 +11,22 @@ findMaximalIntersections <- function(lower, upper){
 }
 
 
-fit_ICPH <- function(obsMat, covars, callText = 'ic_ph', weights, other_info){  # useGA, maxIter, baselineUpdates, useFullHess){
-  if(any(obsMat[,1] > obsMat[,2])) stop("left side of response interval greater than right side. This is impossible.")
+fit_ICPH <- function(obsMat, covars, callText = 'ic_ph', weights, other_info){
+  if(any(obsMat[,1] > obsMat[,2])) 
+    stop("left side of response interval greater than right side. This is impossible.")
   useGA <- other_info$useGA
   maxIter <- other_info$maxIter
   baselineUpdates <- other_info$baselineUpdates
   useFullHess <- other_info$useFullHess
-  useExpSteps <- other_info$useExpSteps
+  useEM <- other_info$useEM
   recenterCovars = TRUE
 	if(getNumCovars(covars) == 0)	recenterCovars <- FALSE
 	mi_info <- findMaximalIntersections(obsMat[,1], obsMat[,2])
 	k = length(mi_info[['mi_l']])
 	covars <- as.matrix(covars)
+	if(getNumCovars(covars) > 0 & useEM == TRUE){
+	  warning('note: EM step is only applicable with no covariates. The EM step will be skipped')
+	}
 	if(callText == 'ic_ph'){fitType = as.integer(1)}
 	else if(callText == 'ic_po'){fitType = as.integer(2)}
 	else {stop('callText not recognized in fit_ICPH')}
@@ -34,12 +38,12 @@ fit_ICPH <- function(obsMat, covars, callText = 'ic_ph', weights, other_info){  
 	
 	c_ans <- .Call('ic_sp_ch', mi_info$l_inds, mi_info$r_inds, covars, fitType, as.numeric(weights), useGA, 
 	               as.integer(maxIter), as.integer(baselineUpdates),
-	               as.logical(useFullHess), as.logical(useExpSteps)) 
-	names(c_ans) <- c('p_hat', 'coefficients', 'final_llk', 'iterations', 'score')
+	               as.logical(useFullHess), as.logical(useEM)) 
+	names(c_ans) <- c('p_hat', 'coefficients', 'llk', 'iterations', 'score')
 	myFit <- new(callText)
 	myFit$p_hat <- c_ans$p_hat
 	myFit$coefficients <- c_ans$coefficients
-	myFit$final_llk <- c_ans$final_llk
+	myFit$llk <- c_ans$llk
 	myFit$iterations <- c_ans$iterations
 	myFit$score <- c_ans$score
 	myFit[['T_bull_Intervals']] <- rbind(mi_info[['mi_l']], mi_info[['mi_r']])
@@ -81,9 +85,10 @@ getBS_coef <- function(sampDataEnv, callText = 'ic_ph', other_info){ #useGA, max
 
 
 expandX <- function(formula, data, fit){
+  if(inherits(fit, 'ic_np')) return(NULL)
 	tt <- terms(fit)
 	Terms <- delete.response(tt)
-	 m <- model.frame(Terms, data, na.action = na.pass, xlev = fit$xlevels)
+	 m <- model.frame(Terms, as.data.frame(data), na.action = na.pass, xlev = fit$xlevels)
 	 x <- model.matrix(Terms, m)
 	 ans <- as.matrix(x[,-1])
 	 if(nrow(ans) != nrow(x)){
@@ -104,6 +109,10 @@ removeSurvFromFormula <- function(formula, ind = 2){
 }
 
 expandY <- function(formula, data, fit){
+  if(inherits(fit, 'ic_np')){
+    if(ncol(data) != 2) stop('expandY expected an nx2 matrix for data')
+    return(data)
+  }
   if(is.null(data)) data <- fit$getRawData()
   newFormula <- formula
   newFormula[[3]] <- newFormula[[2]]
@@ -198,12 +207,12 @@ fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po',
 				uncenInd_mat, gicInd_mat, leftCenInd, rightCenInd,
 				parInd, linkInd, hessian, as.numeric(w_reordered) )
 								
-	names(c_fit) <- c('reg_pars', 'baseline', 'final_llk', 'iterations', 'hessian', 'score')
+	names(c_fit) <- c('reg_pars', 'baseline', 'llk', 'iterations', 'hessian', 'score')
 	
 	fit <- new(callText)
 	fit$reg_pars <- c_fit$reg_pars
 	fit$baseline <- c_fit$baseline
-	fit$final_llk <- c_fit$final_llk
+	fit$llk <- c_fit$llk
 	fit$iterations <- c_fit$iterations
 	fit$hessian <- c_fit$hessian
 	fit$score <- c_fit$score
@@ -438,13 +447,14 @@ s_loglgst <- function(x, par){
 }
 
 get_etas <- function(fit, newdata = NULL){
+  if(fit$par == 'non-parametric'){ans <- 1; names(ans) <- 'baseline'; return(ans)}
 	if(is.null(newdata)){ans <- exp(-fit$baseOffset); names(ans) <- 'baseline'; return(ans)}
-	if(is.character(newdata)){
-		if(newdata == 'midValues')
-		ans <- 1
-		names(ans) <- 'Mean Covariate Values'
-		return(ans)
+	if(identical(newdata, 'midValues')){
+  	ans <- 1
+  	names(ans) <- 'Mean Covariate Values'
+  	return(ans)
 	}
+  if(identical(rownames(newdata), NULL) ) {rownames(newdata) <- as.character(1:nrow(newdata))}
 	grpNames <- rownames(newdata)
 	reducFormula <- fit$formula
 	reducFormula[[2]] <- NULL
@@ -468,10 +478,12 @@ get_s_fun <- function(fit){
 
 po_link <- function(s, nu){ nu * s / (s * (nu - 1) + 1)	}
 ph_link <- function(s, nu){ s^nu }
+no_link <- function(s , nu){ s }
 get_link_fun <- function(fit){
-	if(fit$model == 'po') 	return(po_link)
+	if(fit$model == 'po') return(po_link)
 	if(fit$model == 'ph')	return(ph_link)
-	stop('model type not recognized. Should be "ph" or "po"')
+  if(fit$model == 'none') return(no_link)
+	stop('model type not recognized. Should be "ph", "po" or "none"')
 }
 
 
@@ -633,6 +645,7 @@ getNumCovars <- function(object){
 regmod2int <- new.env()
 regmod2int[['ph']] <- as.integer(1)
 regmod2int[['po']] <- as.integer(2)
+regmod2int[['none']] <- as.integer(0)
 
 basemod2int <- new.env()
 basemod2int[['sp']] <- as.integer(0)
@@ -686,6 +699,7 @@ sampPars <- function(mean, var){
 }
 
 getBSParSample <- function(fit){
+  if(inherits(fit, 'ic_np')) return(NULL)
   nBS_samps <- nrow(fit$bsMat)
   if(is.null(nBS_samps) ){
     stop('no bootstrap samples generated so cannot sample parameter values')
@@ -695,7 +709,7 @@ getBSParSample <- function(fit){
 }
 
 setSamplablePars <- function(fit, coefs){
-  fit$coefficients <- coefs
+  if(!inherits(fit, 'ic_np')) fit$coefficients <- coefs
 }
 
 
@@ -731,4 +745,15 @@ getMaxLength <- function(thisList){
   n <- 0
   for(i in seq_along(thisList)) n <- max(c(n, length(thisList[[i]] ) ) )
   return(n)
+}
+
+addIfMissing <- function(val, name, list){
+  if(is.null(list[[name]])) list[[name]] <- val
+  return(list)
+}
+
+addListIfMissing <- function(listFrom, listInto){
+  listFromNames <- names(listFrom)
+  for(n in listFromNames) listInto <- addIfMissing(listFrom[[n]], n , listInto)
+  return(listInto)
 }

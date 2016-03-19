@@ -1,7 +1,6 @@
-ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, useMCores = F, seed = NULL,
-                  useGA = T, maxIter = 1000, baseUpdates = 5){
+ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, useMCores = F, 
+                  useGA = T, maxIter = 5000, baseUpdates = 5){
   if(missing(data)) data <- environment(formula)
-  useExpSteps = FALSE
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
     m <- match(c("formula", "data", "subset", "na.action", "offset"), names(mf), 0L)
@@ -58,41 +57,29 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 	
   other_info <- list(useGA = useGA, maxIter = maxIter, 
                      baselineUpdates = baseUpdates, 
-                     useFullHess = useFullHess, useExpSteps = useExpSteps)  
+                     useFullHess = useFullHess, 
+                     useEM = FALSE)  
 
-   	fitInfo <- fit_ICPH(yMat, x, callText, weights, other_info)
+  fitInfo <- fit_ICPH(yMat, x, callText, weights, other_info)
 	dataEnv <- list()
 	dataEnv[['x']] <- as.matrix(x, nrow = nrow(yMat))
 	if(ncol(dataEnv$x) == 1) colnames(dataEnv[['x']]) <- as.character(formula[[3]])
 	dataEnv[['y']] <- yMat
-	if(!is.numeric(seed))
-		seed <- round(runif(1, max = 10000000))
-   	if(seed < 0) stop('seed must be non-negative')   
-	seeds = 1:bs_samples + seed
+	seeds = as.integer( runif(bs_samples, 0, 2^31) )
 	bsMat <- numeric()
+	if(useMCores) `%mydo%` <- `%dopar%`
+	else          `%mydo%` <- `%do%`
+	i <- NULL  #this is only to trick R CMD check, 
+	           #as it does not recognize the foreach syntax
 	if(bs_samples > 0){
-	   	if(useMCores == F){
-	 		for(i in 1:bs_samples){
-	    		set.seed(i + seed)
-	    		sampDataEnv <- bs_sampleData(dataEnv, weights)
-				bsMat <- rbind(bsMat, getBS_coef(sampDataEnv, 
-				                                 callText = callText, other_info = other_info))
-	    	}
-	    }
-	    else{
-	    	bsMat <- foreach(i = seeds, 
-	    					.combine = 'rbind') %dopar%{
-	    		set.seed(i)
-	    		sampDataEnv <- bs_sampleData(dataEnv, weights)
-				getBS_coef(sampDataEnv, callText = callText,
+	    bsMat <- foreach(i = seeds, .combine = 'rbind') %mydo%{
+	        set.seed(i)
+	        sampDataEnv <- bs_sampleData(dataEnv, weights)
+			    getBS_coef(sampDataEnv, callText = callText,
 				           other_info = other_info)
-
 	    	}
-	    }
-   	 }
+	 }
 	    
-#	 xNames <- colnames(x)
-
 	 if(bs_samples > 0){
 	   	 names(fitInfo$coefficients) <- xNames
 	   	 colnames(bsMat) <- xNames
@@ -100,18 +87,19 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 	   	 numNA <- sum(incompleteIndicator)
 	   	 if(numNA > 0){
 	    		if(numNA / length(incompleteIndicator) >= 0.1)
-	    		cat('warning: ', numNA,' bootstrap samples (out of ', bs_samples, ') were dropped due to singular covariate matrix. Likely due to very sparse covariate. Be wary of these results.\n', sep = '')
+	    		cat('warning: ', numNA,
+	    		    ' bootstrap samples (out of ', bs_samples, 
+	    		    ') were dropped due to singular covariate matrix.',
+              'Likely due to very sparse covariate. Be wary of these results.\n', sep = '')
 	    		bsMat <- bsMat[!incompleteIndicator,]
 	    	}
-	covar <- cov(bsMat)
-    est_bias <- colMeans(bsMat) - fitInfo$coefficients 
-    fitInfo$coef_bc <- fitInfo$coefficients - est_bias
-    }
-    
-    else{ 
-    	bsMat <- NULL
-    	covar <- NULL
-    	coef_bc <- NULL
+	      covar <- cov(bsMat)
+        est_bias <- colMeans(bsMat) - fitInfo$coefficients 
+        fitInfo$coef_bc <- fitInfo$coefficients - est_bias
+    }else{ 
+        bsMat <- NULL
+        covar <- NULL
+        coef_bc <- NULL
     }
     names(fitInfo$coefficients) <- xNames
     fitInfo$bsMat <- bsMat
@@ -125,7 +113,6 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
     fitInfo$reg_pars <- fitInfo$coefficients
     fitInfo$terms <- mt
     fitInfo$xlevels <- .getXlevels(mt, mf)
-#    class(fitInfo) <- c(callText, 'icenReg_fit', 'sp_fit')
     if(fitInfo$iterations == maxIter){
       warning(paste0('Maximum iterations reached in ic_sp.', 
               '\n\nCommon cause of problem is when many observations are uncensored in Cox-PH model',
@@ -147,7 +134,7 @@ getSCurves <- function(fit, newdata = NULL){
 	etas <- get_etas(fit, newdata)
 	grpNames <- names(etas)
 	transFxn <- get_link_fun(fit)
-	if(fit$par == 'semi-parametric'){
+	if(fit$par == 'semi-parametric' | fit$par == 'non-parametric'){
 		x_l <- fit$T_bull_Intervals[1,]
 		x_u <- fit$T_bull_Intervals[2,]
 		x_l <- c(x_l[1], x_l)
@@ -156,6 +143,7 @@ getSCurves <- function(fit, newdata = NULL){
 		colnames(Tbull_intervals) <- c('lower', 'upper')
 		s <- 1 - c(0, cumsum(fit$p_hat))
 		ans <- list(Tbull_ints = Tbull_intervals, "S_curves" = list())
+		
 		for(i in 1:length(etas)){
 			eta <- etas[i]
 			ans[["S_curves"]][[grpNames[i] ]] <- transFxn(s, eta)
@@ -165,46 +153,48 @@ getSCurves <- function(fit, newdata = NULL){
 	}
 	else{
 	  	stop('getSCurves only for semi-parametric model. Try getFitEsts')
-# 		x <- q
-# 		s_fun <- get_s_fun(fit)
-# 		ans <- list(x = x, S_curves = list())
-# 		s <- numeric()
-# 		for(j in seq_along(x)){
-# 			s[j] <- s_fun(x[j], fit$baseline)
-# 		}
-# 		for(i in length(etas)){
-# 			ans[['S_curves']][[grpNames[i] ]] <- transFxn(s, etas[i])
-# 		}	
-# 		class(ans) <- 'par_curves'
-# 		return(ans)
 	}
 }
 
 
-plot.icenReg_fit <- function(x, y, fun = 'surv', lgdLocation = 'topright', xlab = "time",
-                             colors = NULL, ...){
+plot.icenReg_fit <- function(x, y, fun = 'surv', 
+                             lgdLocation = 'topright', xlab = "time", ...){
 	if(inherits(x, 'impute_par_icph'))	stop('plot currently not supported for imputation model')
-	if(missing(y)) y <- list(...)$newdata	
+  argList <- list(...)
+  colors <- argList$col
+	if(missing(y)) y <- argList$newdata	
 	newdata <- y
   nRows <- 1
   if(!is.null(newdata)) nRows <- nrow(newdata)
   if(fun == 'surv'){ s_trans <- function(x){x}; yName = 'S(t)'}
-  else if(fun == 'cdf'){s_trans <- function(x){1-x}; yName = 'F(t)'}
+  else if(fun == 'cdf'){ s_trans <- function(x){1-x}; yName = 'F(t)' }
   else stop('"fun" option not recognized. Choices are "surv" or "cdf"')
+
+  addList <- list(xlab = xlab, ylab = yName)
+  argList <- addListIfMissing(addList, argList)
+  firstPlotList <- argList
+  firstPlotList[['type']] <- 'n'
+  firstPlotList[['x']] <- 1
+  firstPlotList[['y']] <- 1
   
-	if(x$par == 'semi-parametric'){
+    
+	if(x$par == 'semi-parametric' | x$par == 'non-parametric'){
 		curveInfo <- getSCurves(x, y)
 		allx <- c(curveInfo$Tbull_ints[,1], curveInfo$Tbull_ints[,2])
 		dummyx <- range(allx, finite = TRUE)
 		dummyy <- c(0,1)
-	
-		plot(dummyx, dummyy, xlab = xlab, ylab = yName, ..., type = 'n')
+	  firstPlotList[['xlim']] <- dummyx
+	  firstPlotList[['ylim']] <- dummyy
+    
 		x_l <- curveInfo$Tbull_ints[,1]
 		x_u <- curveInfo$Tbull_ints[,2]
 		k <- length(x_l)
 		ss <- curveInfo$S_curves
-		if(is.null(colors))  colors <- 1:length(ss)
+
+		do.call(plot, firstPlotList)
 		
+		if(is.null(colors))  colors <- 1:length(ss)
+		if(length(colors) == 1) colors <- rep(colors, length(ss)) 
 		for(i in 1:length(ss)){
 			lines(x_l, s_trans(ss[[i]]), col = colors[i], type = 's')
 			lines(x_u, s_trans(ss[[i]]), col = colors[i], type = 's')
@@ -219,8 +209,14 @@ plot.icenReg_fit <- function(x, y, fun = 'surv', lgdLocation = 'topright', xlab 
     ranges <- matrix(nrow = nRows, ncol = 2)
 		ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.05 )
     ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.95 )
-		plot(NA, xlim = range(as.numeric(ranges), finite = TRUE), ylim = c(0,1), xlab = xlab, ylab = yName)
-		ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.005 )
+    
+    addList <- list(xlab = xlab, ylab = yName, 
+                    xlim = range(as.numeric(ranges)), ylim = c(0,1))
+    argList <- addListIfMissing(addList, argList)
+    firstPlotList <- argList
+    do.call(plot, firstPlotList)
+
+    ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.005 )
 		ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.995 )
 		if(is.null(colors))  colors <- 1:nRows
 		
@@ -236,8 +232,123 @@ plot.icenReg_fit <- function(x, y, fun = 'surv', lgdLocation = 'topright', xlab 
 	}
 }
 
+
+lines.icenReg_fit <- function(x, y, fun = 'surv', ...){
+  argList <- list(...)
+  colors <- argList$col
+  if(missing(y)) y <- argList$newdata	
+  newdata <- y
+  nRows <- 1
+  if(!is.null(newdata)) nRows <- nrow(newdata)
+  if(fun == 'surv'){ s_trans <- function(x){x}; yName = 'S(t)'}
+  else if(fun == 'cdf'){ s_trans <- function(x){1-x}; yName = 'F(t)' }
+  else stop('"fun" option not recognized. Choices are "surv" or "cdf"')
+  
+#  addList <- list(xlab = xlab, ylab = yName)
+#  argList <- addListIfMissing(addList, argList)
+
+  if(x$par == 'semi-parametric' | x$par == 'non-parametric'){
+    argList <- addIfMissing('s', 'type', argList)
+    curveInfo <- getSCurves(x, y)
+    allx <- c(curveInfo$Tbull_ints[,1], curveInfo$Tbull_ints[,2])
+    dummyx <- range(allx, finite = TRUE)
+    dummyy <- c(0,1)
+    x_l <- curveInfo$Tbull_ints[,1]
+    x_u <- curveInfo$Tbull_ints[,2]
+    k <- length(x_l)
+    ss <- curveInfo$S_curves
+    if(is.null(colors))  colors <- 1:length(ss)
+    if(length(colors) == 1) colors <- rep(colors, length(ss)) 
+    for(i in 1:length(ss)){
+      argList[['x']] <- x_l
+      argList[['y']] <- s_trans(ss[[i]])
+      argList[['col']] <- colors[i]
+      do.call(lines, argList)     
+      argList[['x']] <- x_u
+      do.call(lines, argList)     
+      argList[['x']] <- c(x_l[k], x_u[k])
+      argList[['y']] <- s_trans(c(ss[[i]][k], ss[[i]][k]))
+      do.call(lines, argList)
+    }
+  }
+  else if(inherits(x, 'par_fit')){
+    ranges <- matrix(nrow = nRows, ncol = 2)
+    ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.05 )
+    ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.95 )
+    if(is.null(colors))  colors <- 1:nRows
+    for(i in 1:nrow(ranges)){
+      grid = ranges[i,1] + 0:100/100 * (ranges[i,2] - ranges[i,1])
+      est.s <- 1 - getFitEsts(x, newdata = subsetData_ifNeeded(i, newdata), q = grid)
+      argList[['x']] <- grid
+      argList[['y']] <- s_trans(est.s)
+      argList[['col']] <- colors[i]
+      do.call(lines, argList)
+    }
+  }
+}
+
+
+OLD_lines.icenReg_fit <- function(x, y, fun = 'surv', lgdLocation = 'topright', xlab = "time",
+                             colors = NULL, ...){
+  if(missing(y)) y <- list(...)$newdata	
+  newdata <- y
+  nRows <- 1
+  if(!is.null(newdata)) nRows <- nrow(newdata)
+  if(fun == 'surv'){ s_trans <- function(x){x}; yName = 'S(t)'}
+  else if(fun == 'cdf'){s_trans <- function(x){1-x}; yName = 'F(t)'}
+  else stop('"fun" option not recognized. Choices are "surv" or "cdf"')
+  
+  if(x$par == 'semi-parametric'){
+    curveInfo <- getSCurves(x, y)
+    allx <- c(curveInfo$Tbull_ints[,1], curveInfo$Tbull_ints[,2])
+    dummyx <- range(allx, finite = TRUE)
+    dummyy <- c(0,1)
+    
+#    plot(dummyx, dummyy, xlab = xlab, ylab = yName, ..., type = 'n')
+    x_l <- curveInfo$Tbull_ints[,1]
+    x_u <- curveInfo$Tbull_ints[,2]
+    k <- length(x_l)
+    ss <- curveInfo$S_curves
+    if(is.null(colors))  colors <- 1:length(ss)
+    
+    for(i in 1:length(ss)){
+      lines(x_l, s_trans(ss[[i]]), col = colors[i], type = 's')
+      lines(x_u, s_trans(ss[[i]]), col = colors[i], type = 's')
+      lines(c(x_l[k], x_u[k]), s_trans(c(ss[[i]][k], ss[[i]][k])), col = colors[i])
+    }
+    if(length(ss) > 1){
+      grpNames <- names(ss)
+      legend(lgdLocation, legend = grpNames, lwd = rep(1, length(grpNames) ), col = colors)
+    }
+  }
+  else if(inherits(x, 'par_fit')){
+    ranges <- matrix(nrow = nRows, ncol = 2)
+    ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.05 )
+    ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.95 )
+  #  plot(NA, xlim = range(as.numeric(ranges), finite = TRUE), ylim = c(0,1), xlab = xlab, ylab = yName)
+    ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.005 )
+    ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.995 )
+    if(is.null(colors))  colors <- 1:nRows
+    
+    for(i in 1:nrow(ranges)){
+      grid = ranges[i,1] + 0:100/100 * (ranges[i,2] - ranges[i,1])
+      est.s <- 1 - getFitEsts(x, newdata = subsetData_ifNeeded(i, newdata), q = grid)
+      lines(grid, s_trans(est.s), col = colors[i])
+    }
+    if(nrow(ranges) > 1){
+      grpNames <- rownames(newdata)
+      legend(lgdLocation, legend = grpNames, lwd = rep(1, length(grpNames) ), col = 1:ncol(ranges))
+    }
+  }
+}
+
+
+
 summary.icenReg_fit <- function(object,...)
 	new('icenRegSummary', object)
+summary.ic_npList <- function(object, ...)
+  object
+
 	
 summaryOld.icenReg_fit <- function(object,...){
 	sigfigs = 4
@@ -269,7 +380,7 @@ summaryOld.icenReg_fit <- function(object,...){
 		cat('\n')
 		print(output)
 		if(inherits(fit, 'ic_ph') | inherits(fit, 'ic_po')){
-			cat('\nfinal llk = ', fit$final_llk, '\n')
+			cat('\nfinal llk = ', fit$llk, '\n')
 			cat('Iterations = ', fit$iterations, '\n')
 			cat('Bootstrap samples = ', nrow(fit$bsMat), '\n')
 			if(nrow(fit$bsMat) < 100)
@@ -280,7 +391,7 @@ summaryOld.icenReg_fit <- function(object,...){
 			cat('\nnumber of imputations = ', nrow(fit$imp_coef), '\n')
 		}
 		if(inherits(fit, 'par_fit')){
-			cat('\nfinal llk = ', fit$final_llk, '\n')
+			cat('\nfinal llk = ', fit$llk, '\n')
 			cat('Iterations = ', fit$iterations,'\n')
 		}
 	}
@@ -299,7 +410,7 @@ summaryOld.icenReg_fit <- function(object,...){
 		cat("Call = \n")
 		print(fit$call)
 		print(output)
-		cat('final llk = ', fit$final_llk, '\n')
+		cat('final llk = ', fit$llk, '\n')
 		cat('Iterations = ', fit$iterations, '\n')	
 		cat('Standard Errors not available. To get standard errors, rerun ic_ph with "bs_samples" > 0 (suggested at least 1000)')
 	}
@@ -369,7 +480,7 @@ impute_ic_ph <- function(formula, data, imps = 100, eta = 10^-10, rightCenVal = 
 	mf_forImputes[['one_vec']] <- one_vec
 
 	if(!is.numeric(seed))
-		seed <- round(runif(1, max = 10000000))
+		seed <- round( runif(1, max = 10000000) )
 
 	if(!useMCores){
 		set.seed(seed)
@@ -974,8 +1085,48 @@ imputeCens<- function(fit, newdata = NULL, imputeType = 'fullSample', numImputes
 plot.sp_curves <- function(x, sname = 'baseline', xRange = NULL, ...){
   if(is.null(xRange))
     xRange <- range(c(x[[1]][,1], x[[1]][,2]), finite = TRUE)
-  plot(NA, xlim = xRange, ylim = c(0,1), ...)
+  dotList <- list(...)
+  addList <- list(xlim = xRange, ylim = c(0,1), x = NA)
+  dotList <- addListIfMissing(addList, dotList)
+  do.call(plot, dotList)
   lines(x, sname = sname, ...)
+}
+
+lines.ic_npList <- function(x, fitNames = NULL, ...){
+  if(is.null(fitNames)){
+    fitNames <- names(x$scurves)
+    lines(x, fitNames, ...)
+  }
+  dotList <- list(...)
+  cols <- dotList$col
+
+  for(i in seq_along(fitNames)){
+    thisName <- fitNames[i]
+    dotList$col <- cols[i]
+    dotList$x <- x$scurves[[thisName]]
+    do.call(lines, dotList)
+  }
+}
+
+plot.ic_npList <- function(x, fitNames = NULL, lgdLocation = 'bottomleft', ... ){
+  addList <- list(xlim = x$xRange,
+                  ylim = c(0,1),
+                  xlab = 't', 
+                  ylab = 'S(t)', 
+                  x = NA)
+  dotList <- list(...)
+  dotList <- addListIfMissing(addList, dotList)
+  do.call(plot, dotList)  
+  grpNames <- names(x$fitList)
+  cols <- dotList$col
+  if(is.null(cols)) cols = 2:(length(grpNames) + 1)
+  if(length(cols) != length(grpNames)) 
+    stop('length of number of strata not equal to number of colors')
+  dotList$col <- cols
+  dotList$fitNames = fitNames
+  dotList$x <- x
+  do.call(lines, dotList)
+  legend(lgdLocation, legend = grpNames, col = cols, lty = 1)
 }
 
 lines.sp_curves <- function(x, sname = 'baseline',...){
@@ -1028,4 +1179,80 @@ pGeneralGamma <- function(q, mu, s, Q){
   ans <- .Call('qGeneralGamma', x, mu, s, Q)
   return(ans)
   
+}
+
+
+ic_np <- function(formula = NULL, data, maxIter = 1000, tol = 10^-10){
+  if(is.null(formula)){ return(ic_npSINGLE(data, maxIter = maxIter, tol = tol)) }
+  if(!inherits(formula, 'formula')) {
+    #Covering when user ONLY provides data as first unlabeled argument
+    data <- formula
+    return(ic_npSINGLE(data, maxIter = maxIter, tol = tol))
+  }
+  
+  if(missing(data)) data <- environment(formula)
+  cl <- match.call()
+  mf <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data", "subset", "na.action", "offset"), names(mf), 0L)
+  mf <- mf[c(1L, m)]
+  mf$drop.unused.levels <- TRUE
+  mf[[1L]] <- quote(stats::model.frame)
+  mf <- eval(mf, parent.frame())
+  
+  mt <- attr(mf, "terms")
+  y <- model.response(mf, "numeric")
+  yMat <- as.matrix(y)[,1:2]
+  if(is(y, 'Surv')){
+    rightCens <- mf[,1][,3] == 0
+    yMat[rightCens,2] <- Inf
+    exact <- mf[,1][,3] == 1
+    yMat[exact, 2] = yMat[exact, 1]
+  }
+  storage.mode(yMat) <- 'double'
+  
+  
+  
+  formFactor <- formula[[3]]
+  if( length(formFactor) != 1 ){ 
+    stop('predictor must be either single factor OR 0 for ic_np')
+  }
+  if(formFactor == 0){ return(ic_npSINGLE(yMat, maxIter = maxIter, tol = tol)) }
+  thisFactor <- data[[ as.character(formFactor) ]]
+  if(!is.factor(thisFactor)){ stop('predictor must be factor') }
+  
+  theseLevels <- levels(thisFactor)
+  fitList <- list()
+  
+  for(thisLevel in theseLevels){
+    thisData <- yMat[thisFactor == thisLevel, ]
+    if(nrow(thisData) > 0)
+      fitList[[thisLevel]] <- ic_npSINGLE(thisData, maxIter = maxIter, tol = tol)
+  }
+  ans <- ic_npList(fitList)
+  return(ans)
+}
+
+ic_npSINGLE <- function(data,  maxIter = 1000, tol = 10^-10){
+  data <- as.matrix(data)
+  if(ncol(data) != 2) stop("data should be an nx2 matrix or data.frame")
+  if(any(data[,1] > data[,2]) ) stop(paste0("data[,1] > data[,2].",
+                                          "This is impossible for interval censored data") )
+  storage.mode(data) <- "double"
+  mis <- findMaximalIntersections(data[,1], data[,2])
+  fit <- .Call("EMICM", mis$l_inds, mis$r_inds, as.integer(maxIter))
+  tbulls <- rbind(mis$mi_l, mis$mi_r)
+  ans <- new('ic_np')
+  #ans <- list(phat = fit[[1]], Tbull_ints = tbulls, llk = fit[[2]], iters = fit[[3]])
+  ans$p_hat <- fit[[1]]
+  ans$T_bull_Intervals <- tbulls
+  ans$coefficients <- numeric()
+  ans$llk <- fit[[2]]
+  ans$iterations <- fit[[3]]
+  ans$par <- 'non-parametric'
+  ans$model = 'none'
+  ans$var <- matrix(nrow = 0, ncol = 0) 
+  dataEnv <- new.env()
+  dataEnv[['data']] <- data
+  ans[['.dataEnv']] <- dataEnv
+  return(ans)
 }

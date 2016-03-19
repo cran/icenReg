@@ -129,10 +129,6 @@ void setup_icm(SEXP Rlind, SEXP Rrind, SEXP RCovars, SEXP R_w, icm_Abst* icm_obj
     icm_obj->baseS.resize(maxInd + 2);
     icm_obj->baseS[0] = 1.0;
     icm_obj->baseS[maxInd+1] = 0;
-/*    icm_obj->H_d1.resize(maxInd - 1);
-    icm_obj->H_d2.resize(maxInd - 1, maxInd - 1);   */
-    
-    vector<int> minActPoints;
     int this_l, this_r;
     icm_obj->obs_inf.resize(n);
     icm_obj->node_inf.resize(maxInd + 2);
@@ -141,33 +137,17 @@ void setup_icm(SEXP Rlind, SEXP Rrind, SEXP RCovars, SEXP R_w, icm_Abst* icm_obj
     for(int i = 0; i < n; i++){
         this_l = INTEGER(Rlind)[i];
         this_r = INTEGER(Rrind)[i];
-        addIfNeeded(minActPoints, this_l, this_r, maxInd);
         icm_obj->obs_inf[i].l = this_l;
         icm_obj->obs_inf[i].r = this_r;
         icm_obj->node_inf[this_l].l.push_back(i);
         icm_obj->node_inf[this_r + 1].r.push_back(i);
     }
     
-    sort(minActPoints.begin(), minActPoints.end());
-    
-    
-/*    double stepSize = 4.0/minActPoints.size();
-    double curVal = -2.0;           
- the above was for the log CH. Now trying for survival instead... */
-
-    double stepSize = -1.0/(1.0 + minActPoints.size() );
+    double stepSize = -1.0/(1.0 + icm_obj->baseS.size() );
     double curVal = 1.0;
     
-    int intActIndex = 0;
-    int minActPoint_k = minActPoints.size();
     for(int i = 1; i < (maxInd+1); i++){
-        if(intActIndex < minActPoint_k ){
-            if(i == minActPoints[intActIndex]){
-                intActIndex++;
-                curVal += stepSize;
-            }
-        }
-//        icm_obj->baseCH[i] = curVal;      TURN ON IF WANT TO SWITCH TO CH START
+    	curVal += stepSize;
         icm_obj->baseS[i] = curVal;
     }
     
@@ -432,15 +412,12 @@ void icm_Abst::covar_nr_step(){
 
 
 /*      CALLING ALGORITHM FROM R     */
-SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w, SEXP R_use_GD, SEXP R_maxiter, SEXP R_baselineUpdates, SEXP R_useFullHess, SEXP R_useExpSteps){
+SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType,
+ 			  SEXP R_w, SEXP R_use_GD, SEXP R_maxiter,
+ 			  SEXP R_baselineUpdates, SEXP R_useFullHess, SEXP R_useEMStep){
     icm_Abst* optObj;
     bool useGD = LOGICAL(R_use_GD)[0] == TRUE;
-    bool useExpSteps = LOGICAL(R_useExpSteps)[0] == TRUE;
-	
-	bool printDeltaLLK = false;
-	
-	double llk2, llk1;
-	llk2 = R_NegInf;
+    bool useEMStep = LOGICAL(R_useEMStep)[0] == TRUE;
 	
     if(INTEGER(fitType)[0] == 1){
         optObj = new icm_ph;
@@ -452,90 +429,14 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w, SEXP
 
     setup_icm(Rlind, Rrind, Rcovars, R_w, optObj);
     
-    double llk_old = R_NegInf;
-    double llk_new = optObj->sum_llk();
-    
     optObj->useFullHess = LOGICAL(R_useFullHess)[0] == TRUE;
     
     
-    bool metOnce = false;
     double tol = pow(10.0, -10.0);
     int maxIter = INTEGER(R_maxiter)[0];
     int baselineUpdates = INTEGER(R_baselineUpdates)[0];
-    while(optObj->iter < maxIter && (llk_new - llk_old) > tol){
-        optObj->iter++;
-        llk_old = llk_new;
-		
-		if(printDeltaLLK){
-			llk2 = llk_new;
-		}
-		
-        if(optObj->hasCovars){ 
-			optObj->covar_nr_step();
-			if(printDeltaLLK){
-				llk1 = llk2;
-				llk2 = optObj->sum_llk();
-				Rprintf("covar update = %f  ", llk2 - llk1);
-			}
-		}
-
-        for(int i = 0; i < baselineUpdates; i++)  {
-			
-			optObj->stablizeBCH();
-			
-            if(i < optObj->iter){
-                optObj->icm_step();
-				if(printDeltaLLK){
-					llk1 = llk2;
-					llk2 = optObj->sum_llk();
-					Rprintf("icm update = %f  ", llk2 - llk1);
-				}	
-                if(useGD){
-                    optObj->gradientDescent_step();
-					if(printDeltaLLK){
-						llk1 = llk2;
-						llk2 = optObj->sum_llk();
-						Rprintf("GD update = %f  ", llk2 - llk1);
-					}	
-					
-                }
-                if(useExpSteps){
-        //         optObj->vem();
-                 optObj->last_p_update();
-        //         optObj->vem_sweep();
-        //           optObj->vem_sweep2();
-					if(printDeltaLLK){
-						llk1 = llk2;
-						llk2 = optObj->sum_llk();
-						Rprintf("Experimental update = %f  ", llk2 - llk1);
-					}	
-					
-                }
-				
-            }
-			
-        }
-		if(printDeltaLLK){Rprintf("\n");}	
-        llk_new = optObj->sum_llk();
-        
-        if(llk_new - llk_old > tol){metOnce = false;}
-        if(metOnce == false){
-            if(llk_new - llk_old <= tol){
-                metOnce = true;
-                llk_old = llk_old - 2 * tol;
-            }
-        }
-    }
-
- 
-    if((llk_new - llk_old) < -0.001 ){
-        Rprintf("warning: likelihood decreased! difference = %f\n", llk_new - llk_old);
-    }
     
-//    int totGAIts = optObj->iter * optObj->numBaselineIts;
-//    double propFailGA = (optObj->failedGA_counts + 0.0) / totGAIts;
-    
-//    Rprintf("Number of failed GA attempts = %d, as a percent of attempts = %f, num total = %d\n", optObj->failedGA_counts, propFailGA, totGAIts);
+    double llk_new = optObj->run(maxIter, tol, useGD, useEMStep, baselineUpdates);
     
     vector<double> p_hat;
 	
@@ -581,6 +482,40 @@ SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w, SEXP
 }
 
 
+double icm_Abst::run(int maxIter, double tol, bool useGD, bool useEM, int baselineUpdates){
+	iter = 0;
+	bool metOnce = false;
+	double llk_old = R_NegInf;
+	double llk_new = sum_llk();
+    while(iter < maxIter && (llk_new - llk_old) > tol){
+        iter++;
+        llk_old = llk_new;
+        if(hasCovars){ covar_nr_step(); }
+
+        for(int i = 0; i < baselineUpdates; i++)  {
+			if(hasCovars){stablizeBCH();}
+			else if(useEM){ EM_step(); }			
+            icm_step();
+            if(useGD){ gradientDescent_step(); }
+        }
+			
+	    llk_new = sum_llk();
+	    if(llk_new - llk_old > tol){metOnce = false;}
+	    if(metOnce == false){
+	    	if(llk_new - llk_old <= tol){
+	            metOnce = true;
+	            llk_old = llk_old - 2 * tol;
+	        }
+		}
+ 
+ 	   if((llk_new - llk_old) < -0.001 ){
+ 	       Rprintf("warning: likelihood decreased! difference = %f\n", llk_new - llk_old);
+ 	   }
+ 	}
+ 	return(llk_new);
+}
+
+
 /*      GETTING MAXIMAL INTERSECTIONS       */
 
 SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals){
@@ -589,15 +524,21 @@ SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals){
     vector<double> mi_l;
     vector<double> mi_r;
     
+    mi_l.reserve(k);
+    mi_r.reserve(k);
+    
     bool foundLeft = false;
     double last_left = R_NegInf;
+    
+    double* c_AllVals = REAL(R_AllVals);
+    
     for(int i = 0; i < k; i++){
         if(!foundLeft)                      foundLeft = LOGICAL(isL)[i] == TRUE;
-        if(LOGICAL(isL)[i] == TRUE)         last_left = REAL(R_AllVals)[i];
+        if(LOGICAL(isL)[i] == TRUE)         last_left = c_AllVals[i];
         if(foundLeft){
             if(LOGICAL(isR)[i] == TRUE){
                 mi_l.push_back(last_left);
-                mi_r.push_back(REAL(R_AllVals)[i]);
+                mi_r.push_back(c_AllVals[i]);
                 foundLeft = false;
             }
         }
@@ -607,21 +548,32 @@ SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals){
     int n = LENGTH(lVals);
     SEXP l_ind = PROTECT(allocVector(INTSXP, n));
     SEXP r_ind = PROTECT(allocVector(INTSXP, n));
+    
+    int* cl_ind = INTEGER(l_ind);
+    int* cr_ind = INTEGER(r_ind);
+    double* clVals = REAL(lVals);
+    double* crVals = REAL(rVals);
+    
+    double this_Lval, this_Rval;
+    
     for(int i = 0; i < n; i++){
-        for(int j = 0; j < tbulls; j++){
-            if(mi_l[j] >= REAL(lVals)[i]){
-                INTEGER(l_ind)[i] = j;
+    	this_Lval = clVals[i];
+/*        for(int j = 0; j < tbulls; j++){
+            if(mi_l[j] >= this_Lval){
+				cl_ind[i] = j;
                 break;
             }
-        }
-        
-        for(int j = tbulls-1; j >= 0; j--){
-            if(mi_r[j] <= REAL(rVals)[i]){
-                INTEGER(r_ind)[i] = j;
+        }	*/	
+       cl_ind[i] = findSurroundingVals(this_Lval, mi_l, mi_r, true);
+        this_Rval = crVals[i];
+      /*  for(int j = tbulls-1; j >= 0; j--){
+            if(mi_r[j] <= this_Rval){
+				cr_ind[i] = j;
                 break;
             }
-        }
-    }
+        } */
+    	cr_ind[i] = findSurroundingVals(this_Rval, mi_l, mi_r, false);
+     }
     
     
     SEXP ans = PROTECT(allocVector(VECSXP, 4));

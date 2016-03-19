@@ -192,18 +192,40 @@ void pavaForOptim(vector<double> &d1, vector<double> &d2, vector<double> &x, vec
     }
 }
 
+
+void pavaForOptim(Eigen::VectorXd &d1, Eigen::VectorXd  &d2, Eigen::VectorXd  &x, Eigen::VectorXd  &prop_delta){
+    int k = d1.size();
+    int d2_size = d2.size();
+    int x_size = x.size();
+    if(k != d2_size || k!= x_size){ Rprintf("incorrect sizes provided to pavaForOptim\n"); return;}
+    prop_delta.resize(k);
+    vector<double> y(k);
+    vector<double> w(k);
+    
+    for(int i = 0; i < k; i++){
+        y[i] = -d1[i]/d2[i] + x[i];
+        w[i] = d2[i]/2;
+    }
+    int k_sign = k;
+    pava( &y[0], &w[0], &k_sign );
+    for(int i = 0; i < k; i++){
+        prop_delta[i] = y[i] - x[i];
+    }
+}
+
 void addIfNeeded(vector<int> &points, int l, int r, int max){
     if(r > max)     {Rprintf("warning: r > max\n"); return;}
-    bool chg_btw = false;
+    if(r == max){ 
+    	points.push_back(r);
+    	return;
+    }
     int thisSize = points.size();
     for(int i = 0; i < thisSize; i++){
-        if(l < points[i] && (r + 1) >= points[i]) { chg_btw = true;};
- //       if(l <= points[i])  l_below = true;
- //       if( r >= points[i]) r_geq   = true;
+        if(l < points[i] && (r + 1) >= points[i]) { 
+        	return;
+        }
     }
-    if(chg_btw) {return;}   //no need to add point
-    if(r == max)    points.push_back(r);
-    else            points.push_back(r+1);
+	points.push_back(r+1);
 }
 
 
@@ -504,4 +526,48 @@ void getUniqInts(int i1, int i2, vector<int> &uniqInts, vector<vector<int> > &ve
     for(int i = 0; i < thisSize; i++){
         usedVec[i] = false;
     }
+}
+
+int isValueInInterval(double val, double l, double r){
+	if(val < l) return(-1);
+	if(val > r) return(1);
+	return(0);
+}
+
+int isValueInInterval(double val, int ind, 
+					  vector<double>& lvec, vector<double>& rvec){
+	return(isValueInInterval(val, lvec[ind], rvec[ind]));					  
+}
+
+int findSurroundingVals(double val, vector<double>& leftVec,
+						vector<double>& rightVec, bool isLeft){
+	
+	int a = 0;
+	int b = leftVec.size()-1;
+	if(b == 0){return(0);}
+	if(isValueInInterval(val, R_NegInf, rightVec[0]) == 0) return(0);
+	if(isValueInInterval(val, leftVec[b], R_PosInf) == 0) return(b);
+	
+/*	a++;
+	b--;	*/
+	
+	int maxTries = b;
+	
+	int propInd = (a + b)/2;
+	int tries = 0;
+	int testVal;
+	while( b - a > 1 && tries < maxTries){
+		tries++;
+		propInd = (a + b)/2;
+		testVal = isValueInInterval(val, propInd, leftVec, rightVec);
+		if(testVal == 0){ return(propInd);}
+		if(testVal == -1){ b = propInd; }
+		else{ a = propInd; }
+	}
+	if(a == b){
+		Rprintf("this is very surprising... a = %d, size = %d\n", a, leftVec.size());
+		return(a);
+	}
+	if( isLeft ) return(b); 
+	return(a);
 }

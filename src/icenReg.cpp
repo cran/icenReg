@@ -6,12 +6,14 @@
 //
 //
 
-#include "Eigen_local/Dense"
+//#include "Eigen_local/Dense"
+#include <Eigen/Dense>
 #include <stdio.h>
 #include <vector>
 #include <R.h>
 #include <Rinternals.h>
 #include <Rmath.h>
+
 
 using namespace std;
 
@@ -23,3 +25,6 @@ using namespace std;
 
 #include "icenReg_files/experimentalCode.cpp"
 #include "icenReg_files/regressionTransforms.cpp"
+
+#include "icenReg_files/EMICM.h"
+#include "icenReg_files/EMICM.cpp"

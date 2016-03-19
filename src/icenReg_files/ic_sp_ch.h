@@ -106,6 +106,7 @@ public:
     bool startGD;
     vector<double> baseS;
     vector<double> baseP;
+    vector<double> baseP_backup;
     vector<double> d_cond_S_left;
     vector<double> d_cond_S_right;
     vector<double> base_p_derv;
@@ -122,8 +123,14 @@ public:
     void calc_base_p_derv();
     double getMaxScaleSize( vector<double> &p, vector<double> &prop_p);
     void gradientDescent_step();
+    void EM_step();
     
-    void numeric_dobs_dp();
+    vector<double> dob_dp_both;
+    vector<double> dob_dp_rightOnly;
+
+	double run(int maxIter, double tol, bool useGA, bool useEM, int baselineUpdates);
+    
+    void numeric_dobs_dp(bool forGA);
     double cal_log_obs(double s1, double s2, double eta);
     
     vector<bool> usedVec;
@@ -247,7 +254,9 @@ public:
 };
 
 extern "C" {
-    SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType, SEXP R_w, SEXP R_use_GD, SEXP R_maxiter, SEXP R_baselineUpdates, SEXP R_useFullHess, SEXP R_useExpSteps);
+    SEXP ic_sp_ch(SEXP Rlind, SEXP Rrind, SEXP Rcovars, SEXP fitType,
+                  SEXP R_w, SEXP R_use_GD, SEXP R_maxiter,
+                SEXP R_baselineUpdates, SEXP R_useFullHess, SEXP R_useEMStep);
     SEXP findMI(SEXP R_AllVals, SEXP isL, SEXP isR, SEXP lVals, SEXP rVals);
 }
 #endif /* defined(____ic_sp_cm__) */
