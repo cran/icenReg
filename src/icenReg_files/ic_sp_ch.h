@@ -110,6 +110,8 @@ public:
     vector<double> d_cond_S_left;
     vector<double> d_cond_S_right;
     vector<double> base_p_derv;
+    vector<double> base_p_derv2;			// For computing 2nd derivative
+    vector<double> base_p_2ndDerv;
     vector<double> prop_p;
     double llk_from_p();
     double numeric_p_der(int i);
@@ -123,6 +125,7 @@ public:
     void calc_base_p_derv();
     double getMaxScaleSize( vector<double> &p, vector<double> &prop_p);
     void gradientDescent_step();
+    void experimental_step();
     void EM_step();
     
     vector<double> dob_dp_both;
@@ -131,6 +134,8 @@ public:
 	double run(int maxIter, double tol, bool useGA, bool useEM, int baselineUpdates);
     
     void numeric_dobs_dp(bool forGA);
+    void numeric_dobs2_d2p();
+    
     double cal_log_obs(double s1, double s2, double eta);
     
     vector<bool> usedVec;
@@ -146,6 +151,8 @@ public:
     
     vector<int> exchangeIndices;
     
+    void checkCH();
+    
     void last_p_update();
     void vem();
     void exchange_p_opt(int i1, int i2);
@@ -155,9 +162,6 @@ public:
 
 void setup_icm(SEXP Rlind, SEXP Rrind, SEXP RCovars, SEXP R_w, icm_Abst* icm_obj);
 //function for setting up a actSet_Abst class
-
-//void addDepNodes(vector<int> &intoVec, int l, int r, vector<node_info> &nf);
-//
 
 void cumhaz2p_hat(Eigen::VectorXd &ch, vector<double> &p);
 
@@ -196,12 +200,12 @@ public:
 	
 	void stablizeBCH(){
 		int k = baseCH.size();
-		double thisChange = baseCH[k-2];
+		double thisChange = baseCH[k-2] - 2.0;
 		intercept += thisChange;
 		for(int i = 1; i < (k-1); i++){
 			baseCH[i] -= thisChange;
 		}
-		update_etas();
+		update_etas();	
 	}
 	
 	

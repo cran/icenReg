@@ -1,5 +1,6 @@
 ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, useMCores = F, 
                   useGA = T, maxIter = 5000, baseUpdates = 5){
+  recenterCovars = TRUE
   if(missing(data)) data <- environment(formula)
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
@@ -53,12 +54,14 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 	if(any(is.na(weights) > 0) )		stop('NAs not allowed in weights')
 	if(any(weights < 0)	)				stop('negative weights not allowed')
 	
-	if(is.null(ncol(x)) ) recenterCovars = FALSE
+
+    
+	if(length(x) == 0) recenterCovars = FALSE
 	
   other_info <- list(useGA = useGA, maxIter = maxIter, 
                      baselineUpdates = baseUpdates, 
                      useFullHess = useFullHess, 
-                     useEM = FALSE)  
+                     useEM = FALSE, recenterCovars = recenterCovars)  
 
   fitInfo <- fit_ICPH(yMat, x, callText, weights, other_info)
 	dataEnv <- list()
@@ -75,8 +78,10 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
 	    bsMat <- foreach(i = seeds, .combine = 'rbind') %mydo%{
 	        set.seed(i)
 	        sampDataEnv <- bs_sampleData(dataEnv, weights)
-			    getBS_coef(sampDataEnv, callText = callText,
+			    ans <- getBS_coef(sampDataEnv, callText = callText,
 				           other_info = other_info)
+			    rm(sampDataEnv)
+			    return(ans)
 	    	}
 	 }
 	    
@@ -114,12 +119,7 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
     fitInfo$terms <- mt
     fitInfo$xlevels <- .getXlevels(mt, mf)
     if(fitInfo$iterations == maxIter){
-      warning(paste0('Maximum iterations reached in ic_sp.', 
-              '\n\nCommon cause of problem is when many observations are uncensored in Cox-PH model',
-              '\nas this causes heavy numeric instability in gradient ascent step.', 
-              '\n(note:proportional odds model is more numerically stable).',
-              '\nICM step is still stable, so try increasing maxIter two fold and observe if', 
-              '\ndifference in final llk is less than 0.1. If not, increase maxIter until this occurs.'))
+      warning('Maximum iterations reached in ic_sp.')
     }
    return(fitInfo)
 }
@@ -183,16 +183,15 @@ plot.icenReg_fit <- function(x, y, fun = 'surv',
 		allx <- c(curveInfo$Tbull_ints[,1], curveInfo$Tbull_ints[,2])
 		dummyx <- range(allx, finite = TRUE)
 		dummyy <- c(0,1)
-	  firstPlotList[['xlim']] <- dummyx
-	  firstPlotList[['ylim']] <- dummyy
-    
+	  firstPlotList[['xlim']] = dummyx
+	  firstPlotList[['ylim']] = dummyy
+    do.call(plot, firstPlotList)
+
 		x_l <- curveInfo$Tbull_ints[,1]
 		x_u <- curveInfo$Tbull_ints[,2]
 		k <- length(x_l)
 		ss <- curveInfo$S_curves
 
-		do.call(plot, firstPlotList)
-		
 		if(is.null(colors))  colors <- 1:length(ss)
 		if(length(colors) == 1) colors <- rep(colors, length(ss)) 
 		for(i in 1:length(ss)){
@@ -211,9 +210,8 @@ plot.icenReg_fit <- function(x, y, fun = 'surv',
     ranges[,2] <- getFitEsts(x, newdata = newdata, p = 0.95 )
     
     addList <- list(xlab = xlab, ylab = yName, 
-                    xlim = range(as.numeric(ranges)), ylim = c(0,1))
-    argList <- addListIfMissing(addList, argList)
-    firstPlotList <- argList
+                    xlim = range(as.numeric(ranges), finite = TRUE), ylim = c(0,1))
+    firstPlotList<- addListIfMissing(addList, firstPlotList)
     do.call(plot, firstPlotList)
 
     ranges[,1] <- getFitEsts(x, newdata = newdata, p = 0.005 )
@@ -651,11 +649,19 @@ diag_covar <- function(object, varName,
 		if(k > 1) par(mfrow = c( ceiling(nV/k), k) )
 		for(vn in allVars){
 			useFactor <- length( unique((data[[vn]])) ) < 5
-			diag_covar(object, vn, factorSplit = useFactor, model = model, data = data, yType = yType, weights = weights, lgdLocation = lgdLocation)
+			diag_covar(object, vn, factorSplit = useFactor, model = model,
+			           data = data, yType = yType,
+			           weights = weights, lgdLocation = lgdLocation,
+			           col = col)
 			}
 		return(invisible(NULL))
 	}
 
+	if(model == 'aft'){
+	  stop('diag_covar not supported for aft model. This is because calculating
+	       the non-parametric aft model is quite difficult')
+	}
+	
 	if(model == 'ph')				s_trans <- function(x){ isOk <- x > 0 & x < 1
 															ans <- numeric()
 															ans[isOk] <- log(-log(x[isOk]) )
@@ -851,6 +857,7 @@ getFitEsts <- function(fit, newdata, p, q){
   if(missing(newdata)) newdata <- NULL
   etas <- get_etas(fit, newdata)
   
+  
   if(missing(p))	p <- NULL
   if(missing(q))  q <- NULL
   if(!is.null(q)) {xs <- q; type = 'q'}
@@ -875,11 +882,28 @@ getFitEsts <- function(fit, newdata, p, q){
     baseMod <- fit$par
     baselineInfo <- fit$baseline
   }
-  if(type == 'q')
-    ans <- getSurvProbs(xs, etas, baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
-  else if(type == 'p')
-    ans <- getSurvTimes(xs, etas, baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
+  
+  if(fit$model == 'po' | fit$model == 'ph'){
+    surv_etas <- etas
+    scale_etas <- rep(1, length(etas)) 
+  }
+  
+  else if(fit$model == 'aft'){
+    scale_etas <- etas
+    surv_etas <- rep(1, length(etas)) 
+  }
+  else stop('model not recognized in getFitEsts')
+  
+  if(type == 'q'){
+    ans <- getSurvProbs(xs, surv_etas, baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
+    ans <- ans * scale_etas
+    return(ans)
+  }
+  else if(type == 'p'){
+    xs <- xs / scale_etas
+    ans <- getSurvTimes(xs, surv_etas, baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
   return(ans)
+  }
 }
 
 
@@ -986,6 +1010,10 @@ diag_baseline <- function(object, data, model = 'ph', weights = NULL,
 						  dists = c('exponential', 'weibull', 'gamma', 'lnorm', 'loglogistic', 'generalgamma'),
 						  cols = NULL, lgdLocation = 'bottomleft',
 						  useMidCovars = T){
+  if(model == 'aft'){
+    stop('diag_baseline not supported for aft model. This is because calculating
+	       the non-parametric aft model is quite difficult')
+  }  
 	newdata = NULL
 	if(useMidCovars) newdata <- 'midValues'
 	formula <- getFormula(object)
