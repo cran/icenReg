@@ -190,7 +190,7 @@ void IC_parOpt::NR_baseline_pars(){
     else{
         for(int i = 0; i < k; i++){
                 if(d2_b_pars(i,i) < -0.001) propVec[i] = -d_b_pars[i]/d2_b_pars(i,i);
-                else propVec[i] = signVal(d_b_pars[i]) * 0.1;
+                else propVec[i] = signVal(d_b_pars[i]) * 0.001;
             
                 if(ISNAN(propVec[i])) propVec[i] = 0;
         }
@@ -583,7 +583,7 @@ SEXP ic_par(SEXP R_s_t, SEXP R_d_t, SEXP covars,
     if(lk_new == R_NegInf){
         int bk = optObj->b_pars.size();
         int tries = 0;
-        double delta = 1;
+        double delta = 0.001;
         while(tries < 10 && lk_new == R_NegInf){
             tries++;
             for(int i = 0; i < bk; i++){

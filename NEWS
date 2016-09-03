@@ -1,6 +1,12 @@
 
 UPDATES:
 
+v1.3.6
+Allow for declaration of whether intervals are open or closed for 
+ic_sp and ic_np
+Added simulationFunctions.R
+Uses Roxygen for man files
+
 v1.3.5
 Added parametric AFT models
 fixed bug in plot.icenRegFit regarding xlim and ylim for semiparamtric model

@@ -1,16 +1,22 @@
 Package: icenReg
 Type: Package
 Title: Regression Models for Interval Censored Data
-Version: 1.3.5
-Date: 2016-5-21
-Author: Clifford Anderson-Bergman; uses Marloes Maathuis's HeightMap algorithm (MLEcens::reduc)
+Version: 1.3.6
+Date: 2016-9-3
+Author: Clifford Anderson-Bergman; uses Marloes Maathuis's HeightMap algorithm
+    (MLEcens::reduc)
 Depends: survival
 Imports: foreach, methods, MLEcens
 LinkingTo: RcppEigen
 Maintainer: Clifford Anderson-Bergman <pistacliffcho@gmail.com>
-Description: Regression models for interval censored data. Currently supports Cox-PH,  proportional odds, and accelerated failure time models. Allows for both semi and fully parametric models (parametric only for accelerated failure time models). Includes functions for easy visual diagnostics of model fits and imputation of censored data. 
+Description: Regression models for interval censored data. Currently supports
+    Cox-PH, proportional odds, and accelerated failure time models. Allows for
+    both semi and fully parametric models (parametric only for accelerated failure
+    time models). Includes functions for easy visual diagnostics of model fits and
+    imputation of censored data.
 License: LGPL (>= 2.0, < 3)
-Packaged: 2016-05-22 21:03:55 UTC; cliff
+Packaged: 2016-09-03 19:36:32 UTC; cliffordanderson-bergman
+RoxygenNote: 5.0.1
 NeedsCompilation: yes
 Repository: CRAN
-Date/Publication: 2016-05-23 00:42:27
+Date/Publication: 2016-09-03 23:38:16
