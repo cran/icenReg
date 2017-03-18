@@ -42,8 +42,8 @@ void IC_parOpt_aft::update_dobs_detas(){
         con0 = log(con_d(this_d, exp(thisEta) ) ) * w[w_ind] ;
         con_h = log(con_d(this_d, exp(thisEta + this_h) ) ) * w[w_ind] ;
         con_l = log(con_d(this_d, exp(thisEta - this_h) ) ) * w[w_ind] ;
-        dobs_deta[w_ind] = (con_h - con_l) / (2 * this_h);
-        d2obs_d2eta[w_ind] = (con_h + con_l - 2 * con0) / (this_h * this_h);
+        dobs_deta[w_ind] = (con_h - con_l) / (2.0 * this_h);
+        d2obs_d2eta[w_ind] = (con_h + con_l - 2.0 * con0) / (this_h * this_h);
         
     }
     thisSize = gic.size();
@@ -65,9 +65,9 @@ void IC_parOpt_aft::update_dobs_detas(){
         con_l = log(con_s(this_sl, thisExpEta)
                     -con_s(this_sr, thisExpEta) ) * w[w_ind];
 
-        thisExpEta = exp(thisEta + 2 * this_h);
-        dobs_deta[w_ind] = (con_h - con_l) / (2 * this_h);
-        d2obs_d2eta[w_ind] = (con_h + con_l - 2 * con0) / (this_h * this_h);
+        thisExpEta = exp(thisEta + 2.0 * this_h);
+        dobs_deta[w_ind] = (con_h - con_l) / (2.0 * this_h);
+        d2obs_d2eta[w_ind] = (con_h + con_l - 2.0 * con0) / (this_h * this_h);
         
     }
     thisSize = lc.size();
@@ -78,8 +78,8 @@ void IC_parOpt_aft::update_dobs_detas(){
         con0 = log(1.0 - con_s(this_sl, exp(thisEta) ) ) * w[w_ind];        
         con_h = log(1.0 - con_s(this_sl, exp(thisEta + this_h) ) ) * w[w_ind];
         con_l = log(1.0 - con_s(this_sl, exp(thisEta - this_h) ) ) * w[w_ind];
-        dobs_deta[w_ind] = (con_h - con_l) / (2 * this_h);
-        d2obs_d2eta[w_ind] = (con_h + con_l - 2 * con0) / (this_h * this_h);
+        dobs_deta[w_ind] = (con_h - con_l) / (2.0 * this_h);
+        d2obs_d2eta[w_ind] = (con_h + con_l - 2.0 * con0) / (this_h * this_h);
 
     }
     thisSize = rc.size();
@@ -90,13 +90,42 @@ void IC_parOpt_aft::update_dobs_detas(){
         con0 = log(con_s(this_sr, exp(thisEta) ) ) * w[w_ind];
         con_h = log(con_s(this_sr, exp(thisEta + this_h) ) ) * w[w_ind];
         con_l = log(con_s(this_sr, exp(thisEta - this_h) ) ) * w[w_ind];
-        dobs_deta[w_ind] = (con_h - con_l) / (2 * this_h);
-        d2obs_d2eta[w_ind] = (con_h + con_l - 2 * con0) / (this_h * this_h);
+        dobs_deta[w_ind] = (con_h - con_l) / (2.0 * this_h);
+        d2obs_d2eta[w_ind] = (con_h + con_l - 2.0 * con0) / (this_h * this_h);
     }
   
 }
 
+IC_parOpt_aft::IC_parOpt_aft(Rcpp::List R_list){
+	
+	Rcpp::NumericVector R_s_t 	   = R_list["s_t"];
+	Rcpp::NumericVector R_d_t      = R_list["d_t"];
+	Rcpp::NumericMatrix R_covars   = R_list["covars"];
+	Rcpp::IntegerMatrix R_uncenInd = R_list["uncenInd_mat"];
+	Rcpp::IntegerMatrix R_gicInd   = R_list["gicInd_mat"];
+	Rcpp::IntegerVector R_lInd     = R_list["leftCenInd"];
+	Rcpp::IntegerVector R_rInd     = R_list["rightCenInd"];
+	Rcpp::IntegerVector R_parType  = R_list["parInd"];
+	Rcpp::IntegerVector R_linkType = R_list["linkType"];
+	Rcpp::NumericVector R_w        = R_list["w"];
 
+	successfulBuild = true;
+	if(Rf_isNull(R_s_t) )     successfulBuild = false;
+	if(Rf_isNull(R_d_t) )     successfulBuild = false;
+	if(Rf_isNull(R_covars))   successfulBuild = false;
+	if(Rf_isNull(R_uncenInd)) successfulBuild = false;
+	if(Rf_isNull(R_gicInd))   successfulBuild = false;
+	if(Rf_isNull(R_lInd))     successfulBuild = false;
+	if(Rf_isNull(R_parType))  successfulBuild = false;
+	if(Rf_isNull(R_linkType)) successfulBuild = false;
+	if(Rf_isNull(R_w))        successfulBuild = false;
+	
+	init(R_s_t, R_d_t, R_covars, 
+ 		 R_uncenInd, R_gicInd, R_lInd,
+ 		 R_rInd, R_parType, R_linkType, 
+ 		 R_w);
+
+}
 
 IC_parOpt_aft::IC_parOpt_aft(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
                      SEXP R_uncenInd, SEXP R_gicInd, SEXP R_lInd, SEXP R_rInd,
@@ -157,9 +186,9 @@ IC_parOpt_aft::IC_parOpt_aft(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
     d_betas.resize(k);
     d2_betas.resize(k, k);
     
-    SEXP RuncenDim = getAttrib(R_uncenInd, R_DimSymbol);
+    SEXP RuncenDim = Rf_getAttrib(R_uncenInd, R_DimSymbol);
     PROTECT(RuncenDim);
-    SEXP RgicDim = getAttrib(R_gicInd, R_DimSymbol);
+    SEXP RgicDim = Rf_getAttrib(R_gicInd, R_DimSymbol);
     PROTECT(RgicDim);
     
     int n_1 = INTEGER(RuncenDim)[0];

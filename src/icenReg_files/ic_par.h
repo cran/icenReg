@@ -104,15 +104,15 @@ public:
 
 class gammaInfo : public parBLInfo{
 public:
-    double base_d(double x, Eigen::VectorXd &par){return(dgamma(x, exp(par[0]), exp(par[1]), 0));}
-    double base_s(double x, Eigen::VectorXd &par){return(pgamma(x, exp(par[0]), exp(par[1]), 0, 0));}
+    double base_d(double x, Eigen::VectorXd &par){return(R::dgamma(x, exp(par[0]), exp(par[1]), 0));}
+    double base_s(double x, Eigen::VectorXd &par){return(R::pgamma(x, exp(par[0]), exp(par[1]), 0, 0));}
     virtual ~gammaInfo(){};
 };
 
 class weibullInfo : public parBLInfo{
 public:
-    double base_d(double x, Eigen::VectorXd &par){return(dweibull(x, exp(par[0]), exp(par[1]), 0));}
-    double base_s(double x, Eigen::VectorXd &par){return(pweibull(x, exp(par[0]), exp(par[1]), 0, 0));}
+    double base_d(double x, Eigen::VectorXd &par){return(R::dweibull(x, exp(par[0]), exp(par[1]), 0));}
+    double base_s(double x, Eigen::VectorXd &par){return(R::pweibull(x, exp(par[0]), exp(par[1]), 0, 0));}
     virtual ~weibullInfo(){};
 };
 
@@ -125,8 +125,8 @@ public:
 
 class expInfo : public parBLInfo{
 public:
-    double base_d(double x, Eigen::VectorXd &par){return(dexp(x, exp(par[0]), 0));}
-    double base_s(double x, Eigen::VectorXd &par){return(pexp(x, exp(par[0]), 0, 0));}
+    double base_d(double x, Eigen::VectorXd &par){return(R::dexp(x, exp(par[0]), 0));}
+    double base_s(double x, Eigen::VectorXd &par){return(R::pexp(x, exp(par[0]), 0, 0));}
     virtual ~expInfo(){};
 };
 
@@ -253,35 +253,32 @@ public:
     void fillFullHessianAndScore(SEXP r_mat, SEXP score);
     //for filling out the full hessian and score at the MLE
 
-    double h;
+    double h, lk_new, lk_old;
+	int iter, parType, linkType;
+	bool successfulBuild;
+	
+	void optimize();
 
-
+	// Initialization code to be shared by the two constructors
+	void init(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
+              SEXP R_uncenInd, SEXP R_gicInd, SEXP R_lInd, SEXP R_rInd,
+              SEXP R_parType, SEXP R_linkType, SEXP R_w);
+              
+    Rcpp::List exportAns();
+    
     IC_parOpt(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
               SEXP R_uncenInd, SEXP R_gicInd, SEXP R_lInd, SEXP R_rInd,
               SEXP R_parType, SEXP R_linkType, SEXP R_w);
+    IC_parOpt(Rcpp::List R_list);
     IC_parOpt(){}
-    virtual ~IC_parOpt(){}
+    virtual ~IC_parOpt();
 };
 
 extern "C" {
-    SEXP ic_par(SEXP R_s_t,     // this is a vector of times for which the baseline survival will be calculated
-                SEXP R_d_t,     // this is a vector of times for which the baseline density will be calculated
-                SEXP covars,    // matrix of covariates. Will need to be ordered according to group
-                SEXP uncenInd,  // a n_1 x 2 matrix of indicators. First will be index to look up corresponding d
-                                // (i.e. for d_t), second is index to look up s_t
-                SEXP gicInd,    // a n_2 x 2 matrix of indicators. First will be index to look up left side of interval,
-                                // second is to look up right side of interval
-                SEXP lInd,      // n_3 vector of indicators of right side of interval
-                SEXP rInd,      // n_4 vector of indicators of left side of interval
-                SEXP parType,   // integer of paramteric type. 1 = gamma, 2 = weib, 3 = lnorm, 4 = exp, 5 = loglogistic
-                SEXP linkType,  // integer of link type. 1 = proportional odds, 2 = proportional hazards
-                SEXP outHessian, // hessian matrix at MLE. Easier to pass this than to create it in C++
-                SEXP R_w         //
-                );
-
     SEXP dGeneralGamma(SEXP R_x, SEXP R_mu, SEXP R_s, SEXP R_Q);
     SEXP pGeneralGamma(SEXP R_x, SEXP R_mu, SEXP R_s, SEXP R_Q);
     SEXP qGeneralGamma(SEXP R_x, SEXP R_mu, SEXP R_s, SEXP R_Q);
 }
+
 
 #endif /* defined(____ic_par__) */

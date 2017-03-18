@@ -17,52 +17,6 @@ findMaximalIntersections <- function(lower, upper){
 }
 
 
-fit_ICPH <- function(obsMat, covars, callText = 'ic_ph', weights, other_info){
-  if(any(obsMat[,1] > obsMat[,2])) 
-    stop("left side of response interval greater than right side. This is impossible.")
-  useGA <- other_info$useGA
-  maxIter <- other_info$maxIter
-  baselineUpdates <- other_info$baselineUpdates
-  useFullHess <- other_info$useFullHess
-  updateCovars <- other_info$updateCovars
-  recenterCovars <- other_info$recenterCovars
-  regStart <- other_info$regStart
-	if(getNumCovars(covars) == 0)	recenterCovars <- FALSE
-	mi_info <- findMaximalIntersections(obsMat[,1], obsMat[,2])
-	k = length(mi_info[['mi_l']])
-	covars <- as.matrix(covars)
-	if(callText == 'ic_ph'){fitType = as.integer(1)}
-	else if(callText == 'ic_po'){fitType = as.integer(2)}
-	else {stop('callText not recognized in fit_ICPH')}
-	
-	if(recenterCovars){
-		pca_info <- prcomp(covars, scale. = TRUE)
-		covars <- as.matrix(pca_info$x)
-		regStart <- solve(pca_info$rotation, (regStart * pca_info$scale) )
-	}
-	
-	c_ans <- .Call('ic_sp_ch', mi_info$l_inds, mi_info$r_inds, covars, fitType, as.numeric(weights), useGA, 
-	               as.integer(maxIter), as.integer(baselineUpdates),
-	               as.logical(useFullHess), as.logical(updateCovars),
-	               as.double(regStart))  
-	names(c_ans) <- c('p_hat', 'coefficients', 'llk', 'iterations', 'score')
-	myFit <- new(callText)
-	myFit$p_hat <- c_ans$p_hat
-	myFit$coefficients <- c_ans$coefficients
-	myFit$llk <- c_ans$llk
-	myFit$iterations <- c_ans$iterations
-	myFit$score <- c_ans$score
-	myFit[['T_bull_Intervals']] <- rbind(mi_info[['mi_l']], mi_info[['mi_r']])
-	myFit$p_hat <- myFit$p_hat / sum(myFit$p_hat) 
-	myFit$baseOffset <- 0
-	if(recenterCovars == TRUE){
-		myFit$pca_coefs <- myFit$coefficients
-		myFit$pca_info <- pca_info
-		myFit$coefficients <- as.numeric( myFit$pca_info$rotation %*% myFit$coefficients) / myFit$pca_info$scale		
-		myFit$baseOffset = as.numeric(myFit$coefficients %*% myFit$pca_info$center)
-	}
-	return(myFit)
-}
 
 
 
@@ -79,12 +33,11 @@ bs_sampleData <- function(rawDataEnv, weights){
 	return(sampEnv)
 }
 
-getBS_coef <- function(sampDataEnv, callText = 'ic_ph', other_info){ #useGA, maxIter, baselineUpdates){
+getBS_coef <- function(sampDataEnv, callText = 'ic_ph', other_info){ 
 	xMat <- cbind(sampDataEnv$x,1)
 	invertResult <- try(diag(solve(t(xMat) %*% xMat )), silent = TRUE)
 	if(is(invertResult, 'try-error')) {return( rep(NA, ncol(xMat) -1) ) }
 	output <- fit_ICPH(sampDataEnv$y, sampDataEnv$x, callText, sampDataEnv$w, other_info)$coefficients
-	         #          useGA = useGA, maxIter = maxIter, baselineUpdates = baselineUpdates)$coefficients
 	return(output)
 }
 
@@ -136,118 +89,95 @@ getResponse <- function(fit, newdata = NULL){
 }
 ###		PARAMETRIC FIT UTILITIES
 
-fit_par <- function(y_mat, x_mat, parFam = 'gamma', link = 'po', 
-                    leftCen = 0, rightCen = Inf, 
-                    uncenTol = 10^-6, regnames, 
-                    weights, callText){
-
-	recenterCovar <- FALSE
-	k_reg <- getNumCovars(x_mat)
-	if(k_reg > 0)	recenterCovar <- TRUE
-	etaOffset = 0
-	if(!is.matrix(x_mat))
-		x_mat <- matrix(x_mat, ncol = 1)
-	if(recenterCovar == TRUE){
-		prcomp_xmat <- prcomp(x_mat, center = TRUE, scale. = TRUE)
-		x_mat <- prcomp_xmat$x
-	}
-	
-	isUncen <- abs(y_mat[,2] - y_mat[,1]) < uncenTol
-	mean_uncen_t <- (y_mat[isUncen,1] + y_mat[isUncen,2])/2
-	y_mat[isUncen,1] <- mean_uncen_t
-	y_mat[isUncen,2] <- mean_uncen_t
-	isRightCen <- y_mat[,2] == rightCen
-	isLeftCen <- y_mat[,1]  <= leftCen
-	isGCen <- !(isUncen | isRightCen | isLeftCen)
-	
-	if(any(isRightCen & isUncen))	stop('estimator not defined if left side of interval = 0')
-	if(any(isLeftCen & isUncen))	stop('uncensored times cannot be equal = 0. Try replacing exact times = 0 with really small numbers')
-	if(any(y_mat[,1] > y_mat[,2]))	stop('left side of interval cannot be larger than right!')
-	
-	s_t <- unique( as.numeric(y_mat) )
-	uncenInd_s <- match(y_mat[isUncen, 1], s_t)
-	d_t <- unique(s_t[uncenInd_s])
-	uncenInd_d <- match(y_mat[isUncen, 1], d_t)
-	uncenInd_mat <- as.matrix(cbind(uncenInd_d, uncenInd_s))
-	
-	rightCenInd <- match(y_mat[isRightCen,1], s_t)
-	leftCenInd <- match(y_mat[isLeftCen,2], s_t)
-	
-	leftSideInd <- match(y_mat[isGCen, 1], s_t)
-	rightSideInd <- match(y_mat[isGCen, 2], s_t)
-	
-	gicInd_mat <- as.matrix(cbind(leftSideInd, rightSideInd))
-	
-	w_reordered <- c(weights[isUncen], weights[isGCen], weights[isLeftCen], weights[isRightCen])
-	
-	if(is.matrix(x_mat)	){
-		if(ncol(x_mat) > 1)	x_mat_rearranged <- rbind(x_mat[isUncen,], x_mat[isGCen,], x_mat[isLeftCen,], x_mat[isRightCen,])
-		else				x_mat_rearranged <- matrix(c(x_mat[isUncen], x_mat[isGCen], x_mat[isLeftCen], x_mat[isRightCen]), ncol = 1)
-	}
-	else if(length(x_mat) != 0)		x_mat_rearranged <- matrix(c(x_mat[isUncen], x_mat[isGCen], x_mat[isLeftCen], x_mat[isRightCen]), ncol = 1)
-	else							x_mat_rearranged <- matrix(ncol = 0, nrow = nrow(x_mat))
-	storage.mode(x_mat_rearranged) <- 'double'
-	x_mat_rearranged <- as.matrix(x_mat_rearranged)	
-	
-	if(k_reg == 0)	x_mat_rearranged <- matrix(nrow = nrow(x_mat), ncol = k_reg)
-		
-	#regnames = colnames(x_mat_rearranged)
-	if(parFam == 'gamma') {parInd = as.integer(1); k_base = 2; bnames = c('log_shape', 'log_scale')}
-	else if(parFam == 'weibull') {parInd = as.integer(2); k_base = 2; bnames = c('log_shape', 'log_scale')}
-	else if(parFam == 'lnorm') {parInd = as.integer(3); k_base = 2; bnames = c('mu', 'log_s')}
-	else if(parFam == 'exponential') {parInd = as.integer(4); k_base = 1; bnames = 'log_scale'}
-	else if(parFam == 'loglogistic') {parInd = as.integer(5); k_base = 2; bnames = c('log_alpha', 'log_beta')}
+make_par_fitList <- function(y_mat, x_mat, parFam = "gamma", 
+                             link = "po", leftCen = 0, rightCen = Inf,
+                             uncenTol = 10^-6, regnames,
+                             weights, callText){
+  k_reg <- getNumCovars(x_mat)
+  etaOffset = 0
+  if(!is.matrix(x_mat))
+    x_mat <- matrix(x_mat, ncol = 1)
+#  if(recenterCovar == TRUE){
+#    prcomp_xmat <- prcomp(x_mat, center = TRUE, scale. = TRUE)
+#    x_mat <- prcomp_xmat$x
+#  }
+  
+  isUncen <- abs(y_mat[,2] - y_mat[,1]) < uncenTol
+  mean_uncen_t <- (y_mat[isUncen,1] + y_mat[isUncen,2])/2
+  y_mat[isUncen,1] <- mean_uncen_t
+  y_mat[isUncen,2] <- mean_uncen_t
+  isRightCen <- y_mat[,2] == rightCen
+  isLeftCen <- y_mat[,1]  <= leftCen
+  isGCen <- !(isUncen | isRightCen | isLeftCen)
+  
+  if(any(isRightCen & isUncen))	stop('estimator not defined if left side of interval = 0')
+  if(any(isLeftCen & isUncen))	stop('uncensored times cannot be equal = 0. Try replacing exact times = 0 with really small numbers')
+  if(any(y_mat[,1] > y_mat[,2]))	stop('left side of interval cannot be larger than right!')
+  
+  s_t <- unique( as.numeric(y_mat) )
+  uncenInd_s <- match(y_mat[isUncen, 1], s_t)
+  d_t <- unique(s_t[uncenInd_s])
+  uncenInd_d <- match(y_mat[isUncen, 1], d_t)
+  uncenInd_mat <- as.matrix(cbind(uncenInd_d, uncenInd_s))
+  
+  rightCenInd <- match(y_mat[isRightCen,1], s_t)
+  leftCenInd <- match(y_mat[isLeftCen,2], s_t)
+  
+  leftSideInd <- match(y_mat[isGCen, 1], s_t)
+  rightSideInd <- match(y_mat[isGCen, 2], s_t)
+  
+  gicInd_mat <- as.matrix(cbind(leftSideInd, rightSideInd))
+  
+  w_reordered <- c(weights[isUncen], weights[isGCen], weights[isLeftCen], weights[isRightCen])
+  
+  if(is.matrix(x_mat)	){
+    if(ncol(x_mat) > 1)	x_mat_rearranged <- rbind(x_mat[isUncen,], x_mat[isGCen,], x_mat[isLeftCen,], x_mat[isRightCen,])
+    else				x_mat_rearranged <- matrix(c(x_mat[isUncen], x_mat[isGCen], x_mat[isLeftCen], x_mat[isRightCen]), ncol = 1)
+  }
+  else if(length(x_mat) != 0)		x_mat_rearranged <- matrix(c(x_mat[isUncen], x_mat[isGCen], x_mat[isLeftCen], x_mat[isRightCen]), ncol = 1)
+  else							x_mat_rearranged <- matrix(ncol = 0, nrow = nrow(x_mat))
+  storage.mode(x_mat_rearranged) <- 'double'
+  x_mat_rearranged <- as.matrix(x_mat_rearranged)	
+  
+  if(k_reg == 0)	x_mat_rearranged <- matrix(nrow = nrow(x_mat), ncol = k_reg)
+  
+  #regnames = colnames(x_mat_rearranged)
+  if(parFam == 'gamma') {parInd = as.integer(1); k_base = 2; bnames = c('log_shape', 'log_scale')}
+  else if(parFam == 'weibull') {parInd = as.integer(2); k_base = 2; bnames = c('log_shape', 'log_scale')}
+  else if(parFam == 'lnorm') {parInd = as.integer(3); k_base = 2; bnames = c('mu', 'log_s')}
+  else if(parFam == 'exponential') {parInd = as.integer(4); k_base = 1; bnames = 'log_scale'}
+  else if(parFam == 'loglogistic') {parInd = as.integer(5); k_base = 2; bnames = c('log_alpha', 'log_beta')}
   else if(parFam == 'generalgamma') {parInd = as.integer(6); k_base = 3; bnames = c('mu', 'log_s', 'Q')}
-	else stop('parametric family not supported')
+  else stop('parametric family not supported')
+  
+  hessnames = c(bnames, regnames)
+  
+  if(link == 'po') linkInd = as.integer(1)
+  else if (link == 'ph') linkInd = as.integer(2)
+  else if (link == 'aft') linkInd = as.integer(3)
+  else stop('link function not supported')
+  
+  hessian <- matrix(numeric(), nrow = (k_reg + k_base), ncol = (k_reg + k_base))
 
-	hessnames = c(bnames, regnames)
-	
-	if(link == 'po') linkInd = as.integer(1)
-	else if (link == 'ph') linkInd = as.integer(2)
-	else if (link == 'aft') linkInd = as.integer(3)
-	else stop('link function not supported')
-	
-	hessian <- matrix(numeric(), nrow = (k_reg + k_base), ncol = (k_reg + k_base))
-	
-	c_fit <- .Call('ic_par', s_t, d_t, x_mat_rearranged,
-				uncenInd_mat, gicInd_mat, leftCenInd, rightCenInd,
-				parInd, linkInd, hessian, as.numeric(w_reordered) )
-								
-	names(c_fit) <- c('reg_pars', 'baseline', 'llk', 'iterations', 'hessian', 'score')
-	
-	fit <- new(callText)
-	fit$reg_pars <- c_fit$reg_pars
-	fit$baseline <- c_fit$baseline
-	fit$llk <- c_fit$llk
-	fit$iterations <- c_fit$iterations
-	fit$hessian <- c_fit$hessian
-	fit$score <- c_fit$score
-	
-	if(recenterCovar == TRUE){
-		fit$pca_coefs <- fit$reg_pars
-		fit$pca_hessian  <- fit$hessian
-		fit$pca_info <- prcomp_xmat
-
-		allPars <- c(fit$baseline, fit$reg_pars)
-		
-		transformedPar <- PCAFit2OrgParFit(prcomp_xmat, fit$pca_hessian, allPars, k_base)
-		fit$baseline   <- transformedPar$pars[1:k_base]
-		fit$reg_pars   <- transformedPar$pars[-1:-k_base]
-		fit$var        <- transformedPar$var	
-		fit$hessian    <- solve(fit$var)
-		fit$baseOffset <- as.numeric(fit$reg_pars %*% prcomp_xmat$center)
-	}
-	
-	names(fit$reg_pars) <- regnames
-	names(fit$baseline) <- bnames
-	colnames(fit$hessian) <- hessnames
-	rownames(fit$hessian) <- hessnames
-	if(recenterCovar == FALSE){
-		fit$var <- -solve(fit$hessian)
-		fit$baseOffset = 0
-	}
-	fit$coefficients <- c(fit$baseline, fit$reg_pars)
-	return(fit)
+  
+  ans <- list(
+    s_t               = s_t,
+    d_t               = d_t,
+    covars            = x_mat_rearranged,
+    uncenInd_mat      = uncenInd_mat,
+    gicInd_mat        = gicInd_mat,
+    leftCenInd        = leftCenInd,
+    rightCenInd       = rightCenInd,
+    parInd            = parInd,
+    linkType          = linkInd,
+    hessian           = hessian,
+    w                 = as.numeric(w_reordered),
+    bnames            = bnames,
+    regnames          = regnames,
+    hessnames         = hessnames
+  )
+  
+  return(ans)
 }
 
 
@@ -452,7 +382,7 @@ s_loglgst <- function(x, par){
 	return(ans)
 }
 
-get_etas <- function(fit, newdata = NULL){
+get_etas <- function(fit, newdata = NULL, reg_pars = NULL){
   if(fit$par == 'non-parametric'){ans <- 1; names(ans) <- 'baseline'; return(ans)}
 	if(is.null(newdata)){ans <- exp(-fit$baseOffset); names(ans) <- 'baseline'; return(ans)}
 	if(identical(newdata, 'midValues')){
@@ -460,12 +390,13 @@ get_etas <- function(fit, newdata = NULL){
   	names(ans) <- 'Mean Covariate Values'
   	return(ans)
 	}
-  if(identical(rownames(newdata), NULL) ) {rownames(newdata) <- as.character(1:nrow(newdata))}
+  if(is.null(reg_pars)){ reg_pars <- default_reg_pars(fit) }
+  if(identical(rownames(newdata), NULL) ) {rownames(newdata) <- as.character(1:icr_nrow(newdata))}
 	grpNames <- rownames(newdata)
 	reducFormula <- fit$formula
 	reducFormula[[2]] <- NULL
 	new_x <- expandX(reducFormula, newdata, fit)
-	log_etas <- as.numeric( new_x %*% fit$reg_pars - fit$baseOffset) 	
+	log_etas <- as.numeric( new_x %*% reg_pars - fit$baseOffset) 	
 	etas <- exp(log_etas)
 	names(etas) <- grpNames
 	return(etas)
@@ -493,13 +424,14 @@ get_link_fun <- function(fit){
 }
 
 
-findUpperBound <- function(val = 1, x, s_fun, link_fun, fit, eta){
-	fval <- 1 - link_fun(s_fun(val, fit$baseline), eta)
+findUpperBound <- function(val = 1, x, s_fun, link_fun, fit, eta, baseline = NULL){
+  if(is.null(baseline)){ baseline <- default_baseline(fit) }
+	fval <- 1 - link_fun(s_fun(val, baseline), eta)
 	tries = 0
 	while(tries < 100 & fval < x){
 		tries = tries + 1
 		val <- val * 10
-		fval <- 1 - link_fun(s_fun(val, fit$baseline), eta)
+		fval <- 1 - link_fun(s_fun(val, baseline), eta)
 	}
 	if(fval < x)	stop('finding upper bound for quantile failed!')
 	return(val)
@@ -692,13 +624,20 @@ getSurvTimes <- function(p, etas, baselineInfo, regMod, baseMod){
 
 
 getSamplablePars <- function(fit){
-  if(is(fit, 'sp_fit')) return(fit$coefficients)
-  else if(is(fit, 'par_fit')) return(fit$coefficients)
+  if(is(fit, 'sp_fit') | is(fit, 'par_fit') | is(fit, 'bayes_fit')) 
+    return(fit$coefficients)
 }
 
 getSamplableVar <- function(fit){
   ans <- fit$var
   if(is.null(ans))  stop('coefficient variance not found for fit. If ic_ph model was fit, make sure to set bs_samples > 100 to get bootstrap sample of variance')
+  return(ans)
+}
+
+sampBayesPar <- function(fit){
+  nRow <- nrow(fit$samples)
+  samp_ind <- round(runif(n = 1, min = 0.5, max = nRow + 0.5) ) 
+  ans <- fit$samples[samp_ind,]
   return(ans)
 }
 
@@ -818,5 +757,69 @@ makeQQFit <- function(fit){
     spfit <- ic_sp(formula = thisFormula, model = thisModel, data = thisData, controls = theseControls)
   }
   return(spfit)
+}
+
+
+
+
+formula_has_plus <- function(form){
+  form_char <- as.character(form)
+  return("+" %in% form_char)
+}
+
+getFactorFromData <- function(formExpression, data){
+  form_char <- as.character(formExpression)
+  if(form_char[1] == 'factor') form_char = form_char[2]
+  ans <- as.factor(data[[form_char]])
+  return(ans)
+}
+
+icr_nrow <- function(x){
+  ans <- nrow(x)
+  if(is.null(ans)){
+    if(length(x) > 0) ans <- 1
+  }
+  return(ans)
+}
+
+icr_ncol <- function(x){
+  ans <- ncol(x)
+  if(is.null(ans)){
+    if(length(x) > 0) ans <- 1
+  }
+  return(ans)
+}
+
+icr_colMeans <- function(x){
+  if(icr_ncol(x) > 1) return( colMeans(x) )
+  return(mean(x))
+}
+
+get_dataframe_row <- function(df, row){
+  if(ncol(df) == 0) return(NULL)
+  if(ncol(df)  > 1) return(df[row, ])
+  ans <- as.data.frame( df[row,] )
+  colnames(ans) <- colnames(df)
+  rownames(ans) <- rownames(df)[row]
+  return(ans)
+}
+
+
+default_baseline <- function(fit){
+  if(!inherits(fit, 'fit_bayes')) return(fit$baseline)
+  return(fit$MAP_baseline)
+}
+default_reg_pars <- function(fit){
+  if(!inherits(fit, 'fit_bayes')) return(fit$reg_pars)
+  return(fit$MAP_reg_pars)
+}
+
+
+sample_in_interval <- function(fit, newdata, lower_time, upper_time){
+  p_l <- getFitEsts(fit, newdata, q = lower_time)
+  p_u <- getFitEsts(fit, newdata, q = upper_time)
+  raw_p <- runif(length(p_l), min = p_l, max = p_u)
+  ans <- getFitEsts(fit, newdata, p = raw_p)
+  return(ans)
 }
 

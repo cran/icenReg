@@ -36,9 +36,7 @@ public:
 	double con_d(double base_t, double nu){
 		double con_t = base_t / nu;
 		double ans = blInf->base_d(con_t, b_pars);
-		
 		ans = ans / nu; 
-		
 		return(ans);
 	}
 	double con_s(double base_t, double nu){
@@ -57,5 +55,6 @@ public:
 	IC_parOpt_aft(SEXP R_s_t, SEXP R_d_t, SEXP R_covars,
                      SEXP R_uncenInd, SEXP R_gicInd, SEXP R_lInd, SEXP R_rInd,
                      SEXP R_parType, SEXP R_linkType, SEXP R_w);
+    IC_parOpt_aft(Rcpp::List R_list);
 };	
 
