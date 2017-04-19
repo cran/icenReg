@@ -1,4 +1,9 @@
 #' Non-Parametric Estimator for Interval Censored Data
+#'
+#' @description
+#'  Fits the non-parametric maximum likelihood estimator (NPMLE) for univariate interval censored data. 
+#'  This is a generalization of the Kaplan-Meier curves that allows for interval censoring. 
+#'  Also referred to as the Turnbull estimator.
 #' 
 #' @param formula   Formula for stratification. If only one group, can be left blank and 
 #' data must be entered as n x 2 matrix.
@@ -7,10 +12,6 @@
 #' @param tol       Numeric tolerance
 #' @param B         Should intervals be open or closed? See details.
 #'
-#'  @description
-#'  Fits the non-parametric maximum likelihood estimator (NPMLE) for univariate interval censored data. 
-#'  This is a generalization of the Kaplan-Meier curves that allows for interval censoring. 
-#'  Also referred to as the Turnbull estimator.
 #'  
 #' @details 
 #' \code{data} must be an n x 2 matrix or data.frame containing two columns of data representing 
@@ -21,7 +22,13 @@
 #' \code{B = c(0,1)} implies that the event occurs within the interval \code{(l,u]}. 
 #' The exception is that if \code{l == u}, it is assumed that the event is uncensored, regardless of \code{B}.
 #'
-#' The NPMLE is fit using an efficient implementation of the EMICM algorithm. 
+#' The NPMLE is fit using an efficient implementation of the EMICM algorithm.
+#' @examples 
+#' data(miceData)
+#' fit <- ic_np(cbind(l, u) ~ grp, data = miceData)
+#' # Stratifies fits by group
+#' 
+#' plot(fit) 
 #' @references 
 #' Turnbull, B. (1976) The empricial distribution with arbitrarily grouped and censored data 
 #' \emph{Journal of the Royal Statistical Society B}, vol 38 p290-295
