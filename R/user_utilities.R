@@ -632,7 +632,7 @@ predict.icenReg_fit <- function(object, type = 'response',
 #' @param fit         icenReg model fit 
 #' @param newdata     \code{data.frame} containing covariates and censored intervals. If blank, will use data from model
 #' @param imputeType  type of imputation. See details for options
-#' @param numImputes  Number of imputations (ignored if \code{imputeType = "median"}) 
+#' @param samples  Number of imputations (ignored if \code{imputeType = "median"}) 
 #' 
 #' @description
 #' Imputes censored responses from data. 
@@ -659,12 +659,12 @@ predict.icenReg_fit <- function(object, type = 'response',
 #' imputedValues <- imputeCens(fit)
 #' @author Clifford Anderson-Bergman
 #' @export
-imputeCens<- function(fit, newdata = NULL, imputeType = 'fullSample', numImputes = 5){
+imputeCens<- function(fit, newdata = NULL, imputeType = 'fullSample', samples = 5){
   if(is.null(newdata)) newdata <- fit$getRawData()
   yMat <- expandY(fit$formula, newdata, fit)
   p1 <- getFitEsts(fit, newdata, q = as.numeric(yMat[,1]) ) 
   p2 <- getFitEsts(fit, newdata, q = as.numeric(yMat[,2]) ) 
-  ans <- matrix(nrow = length(p1), ncol = numImputes)
+  ans <- matrix(nrow = length(p1), ncol = samples)
   storage.mode(ans) <- 'double'
   if(imputeType == 'median'){
     isBayes <- is(fit, 'bayes_fit')
@@ -690,7 +690,7 @@ imputeCens<- function(fit, newdata = NULL, imputeType = 'fullSample', numImputes
       map_ests <- c(fit$MAP_baseline, fit$MAP_reg_pars)
       setSamplablePars(fit, map_ests)
     }
-    for(i in 1:numImputes){
+    for(i in 1:samples){
       p_samp <- runif(length(p1), p1, p2)
       theseImputes <- getFitEsts(fit, newdata, p = p_samp)
       isLow <- theseImputes < yMat[,1]
@@ -707,7 +707,7 @@ imputeCens<- function(fit, newdata = NULL, imputeType = 'fullSample', numImputes
   if(imputeType == 'fullSample'){
     isSP <- is(fit, 'sp_fit')
     isBayes <- is(fit, 'bayes_fit')
-    for(i in 1:numImputes){
+    for(i in 1:samples){
       orgCoefs <- getSamplablePars(fit)
       if(isBayes){
         sampledCoefs <- sampBayesPar(fit)
@@ -903,8 +903,10 @@ sampleSurv_slow <- function(fit, newdata, p = NULL, q = NULL, samples = 100){
 #'                          samples = 100)
 #' # 100 samples of the cumulative probability at t = 10 and 20 for males                        
 #' @export
-sampleSurv <- function(fit, newdata, p = NULL, q = NULL, samples = 100){
-  if(nrow(newdata) > 1) stop('newdata must be a single row')
+sampleSurv <- function(fit, newdata = NULL, p = NULL, q = NULL, samples = 100){
+  if(!is.null(newdata)){
+    if(nrow(newdata) > 1) stop('newdata must be a single row')
+  }
   # Checking what type of look up to do 
   input_type = NULL
   if(!is.null(p)){
@@ -928,9 +930,10 @@ sampleSurv <- function(fit, newdata, p = NULL, q = NULL, samples = 100){
   ans <- matrix(nrow = samples, ncol = nCol)
   etas_and_base <- sample_etas_and_base(fit, samples = samples, newdata = newdata)
   etas <- etas_and_base$etas
+  if(length(etas) == 1) etas <- rep(etas, samples)
   baseMat <- etas_and_base$baseMat
   if(nrow(baseMat) != samples) stop("nrow(baseMat) != samples")
-  if(length(etas)  != samples) stop("nrow(baseMat) != samples")
+  if(length(etas)  != samples) stop("length(etas) != samples")
   for(i in 1:nCol){
     this_input = rep(input[i], samples)
     if(input_type == 'p'){ 
@@ -949,74 +952,14 @@ sampleSurv <- function(fit, newdata, p = NULL, q = NULL, samples = 100){
     }
     
   }
-  if(input_type == 'p') these_colnames <- paste("p =", p)
-  else these_colnames <- paste("t =", q)
+  if(input_type == 'p') these_colnames <- paste("Q(p) =", input)
+  else these_colnames <- paste("F(t) =", input)
+  colnames(ans) <- these_colnames
   return(ans)
 }
 
 
 
-plot.sp_curves <- function(x, sname = 'baseline', xRange = NULL, ...){
-  if(is.null(xRange))
-    xRange <- range(c(x[[1]][,1], x[[1]][,2]), finite = TRUE)
-  dotList <- list(...)
-  addList <- list(xlim = xRange, ylim = c(0,1), x = NA)
-  dotList <- addListIfMissing(addList, dotList)
-  do.call(plot, dotList)
-  lines(x, sname = sname, ...)
-}
-
-lines.ic_npList <- function(x, fitNames = NULL, ...){
-  if(is.null(fitNames)){
-    fitNames <- names(x$scurves)
-    lines(x, fitNames, ...)
-  }
-  dotList <- list(...)
-  cols <- dotList$col
-
-  for(i in seq_along(fitNames)){
-    thisName <- fitNames[i]
-    dotList$col <- cols[i]
-    dotList$x <- x$scurves[[thisName]]
-    do.call(lines, dotList)
-  }
-}
-
-plot.ic_npList <- function(x, fitNames = NULL, lgdLocation = 'bottomleft', ... ){
-  addList <- list(xlim = x$xRange,
-                  ylim = c(0,1),
-                  xlab = 't', 
-                  ylab = 'S(t)', 
-                  x = NA)
-  dotList <- list(...)
-  dotList <- addListIfMissing(addList, dotList)
-  do.call(plot, dotList)  
-  grpNames <- names(x$fitList)
-  cols <- dotList$col
-  if(is.null(cols)) cols = 2:(length(grpNames) + 1)
-  if(length(cols) != length(grpNames)) 
-    stop('length of number of strata not equal to number of colors')
-  dotList$col <- cols
-  dotList$fitNames = fitNames
-  dotList$x <- x
-  do.call(lines, dotList)
-  legend(lgdLocation, legend = grpNames, col = cols, lty = 1)
-}
-
-lines.sp_curves <- function(x, sname = 'baseline',...){
-  firstTimeObs <- x[[1]][1,1]
-  firstTimeAssume <- firstTimeObs
-  if(firstTimeObs > 0)
-    firstTimeAssume <- 0
-  lines(c(firstTimeAssume, firstTimeObs), c(1,1), ...)
-  lines(x[[1]][,1], x[[2]][[sname]], ..., type = 's')
-  lines(x[[1]][,2], x[[2]][[sname]],   ..., type = 's')
-  lastObs <- nrow(x[[1]])
-  lastTimes <- x[[1]][lastObs,]
-  if(lastTimes[2] == Inf) lastTimes[2] <- lastTimes[1]
-  lastTimes[2] <- lastTimes[2] + (lastTimes[2] - firstTimeObs)
-  lines(lastTimes, c(0,0), ... ) 
-}
 
 dGeneralGamma <- function(x, mu, s, Q){
   max_n <- getMaxLength(list(x, mu, s, Q) )
@@ -1109,6 +1052,7 @@ cs2ic <- function(time,
 #' 
 #' @param fit Fitted model from \code{ic_par} or \code{ic_bayes}
 #' @param p Percentiles of distribution to sample
+#' @param q Times of disitribution to sample. Only p OR q should be specified, not p AND q
 #' @param newdata \code{data.frame} containing covariates for survival curves
 #' @param ci_level Confidence/credible level
 #' @param MC_samps Number of Monte Carlo samples taken
@@ -1141,16 +1085,19 @@ cs2ic <- function(time,
 #' plot(fit, newdata = newdata, 
 #'      cis = FALSE)
 #' # Would have been included by default
-#' lines(diab_cis, cols = c("black", "red"))
+#' lines(diab_cis, col = c("black", "red"))
 #' @export
-survCIs <- function(fit, newdata, 
-                    p = c(0:9 * .1 + 0.05), 
+survCIs <- function(fit, newdata = NULL, 
+                    p = NULL, 
+                    q = NULL, 
                     ci_level = 0.95,
-                    MC_samps = 40000){
+                    MC_samps = 4000){
+  if(is.null(p) & is.null(q)){ p = c(0:19 * .05 + 0.025) }
+  if(!is.null(p) & !is.null(q)){ stop('Need to provide p OR q, not both') }
   if(!(inherits(fit, 'par_fit') | inherits(fit, 'bayes_fit')))
      stop("fit must be either from ic_par() or ic_bayes()")
   ans <- surv_cis(fit = fit, newdata = newdata, 
-                  p = p, ci_level = ci_level, 
+                  p = p, q = q, ci_level = ci_level, 
                   MC_samps = MC_samps)
   return(ans)
 }

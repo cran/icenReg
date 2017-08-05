@@ -55,16 +55,18 @@ par_class <- setRefClass(Class = 'par_fit',
 
 bayes_fit <- setRefClass(Class = 'bayes_fit',
                          contains = 'icenReg_fit',
-                         fields = c('samples',
+                         fields = c('mcmcList',
                                     'baseline',
                                     'logPosteriorDensities',
                                     'nSamples',
                                     'ess',
                                     'logPrior',
                                     'finalChol', 
+                                    'MAP_dens',
                                     'MAP_ind',
                                     'MAP_reg_pars',
-                                    'MAP_baseline'))
+                                    'MAP_baseline', 
+                                    'samples'))
 
 
 surv_trans_models <- c('po', 'ph', 'aft', 'none')
@@ -106,9 +108,9 @@ setRefClass('icenRegSummary',
                 colNames <- c('Estimate', 'Exp(Est)', 'Std.Error', 'z-value', 'p')
                 coefs <- fit$coefficients
                 if(is(fit, 'bayes_fit')){
-                  sumPars <- summary(fit$samples)
+                  sumPars <- summary(fit$mcmcList)
                   otherList[['MAP']] <- signif( fullFit$samples[fullFit$MAP_ind,], sigFigs)
-#                  names(otherList[['MAP']]) <- colnames(fullFit$samples)
+                  # otherList[["Gelman"]] <- coda::gelman.diag(fit$mcmcList)
                 }
                 else{
                   sumPars <- matrix(nrow = length(coefs), ncol = length(colNames))
@@ -168,6 +170,8 @@ setRefClass('icenRegSummary',
                 if(inherits(fullFit, 'bayes_fit')){
                   cat('3. MAP estimates:\n') 
                   print( other[['MAP']] )
+                  # cat('\n4. Gelman Diagnostics:\n')
+                  # print(other[['Gelman']])
                 }
                 if(sampSizeWarn){
                   cat("WARNING: only ", other[['bs_samps']], " bootstrap samples used for standard errors. \nSuggest using more bootstrap samples for inference\n")
@@ -207,32 +211,55 @@ ic_npList <- setRefClass(Class = 'ic_npList',
 
 
 surv_cis <- setRefClass("surv_cis",
-                          fields = c('cis', 'call', 'newdata'),
+                          fields = c('cis', 'call', 'newdata', 'ci_level'),
                           methods = list(
                             fit_one_row = function(fit, newdata_row,
-                                                   p, p_ends, MC_samps){
+                                                   p, q, p_ends, MC_samps){
                               samp <- sampleSurv(fit, newdata_row, 
-                                               p = p, samples = MC_samps)
-                              ans <- matrix(nrow = length(p), ncol = 2)
-                              for(i in 1:length(p)){ ans[i,] <- quantile(samp[,i], probs = p_ends)}
-                              ans <- cbind(p, ans)
-                              colnames(ans) <- c("Percentile", "lower", "upper")
-                              rownames(ans) <- round(p, 3)
+                                               p = p, q = q, 
+                                               samples = MC_samps)
+                              
+                              use_input <- 'p'
+                              inputLength <- length(p)
+                              inputVals <- p
+                              if(is.null(p)){
+                                use_input = 'q'
+                                inputLength = length(q)
+                                inputVals <- q
+                              }
+                              q_ests <- matrix(nrow = inputLength, ncol = 3)
+                              mean_ests <- NULL 
+                              p_use <- c(0.5, p_ends)
+                              for(i in 1:inputLength){ 
+                                q_ests[i,] <- quantile(samp[,i], probs = p_use) 
+                                mean_ests[i] <- mean(samp[,i])
+                              }
+                              ans <- cbind(inputVals, mean_ests, q_ests)
+                              firstColName <- 'Percentile'
+                              if(is.null(p)) firstColName <- 'Time'
+                              colnames(ans) <- c(firstColName, 
+                                                 'estimate (mean)', 'estimate (median)', 
+                                                 "lower", "upper")
                               return(ans)
                             },
                             initialize = function(fit, 
                                                   newdata = NULL,
                                                   p = c(0:9 * .1 + 0.05),
+                                                  q = NULL, 
                                                   ci_level = 0.95, 
                                                   MC_samps = 40000){
                               call <<- fit$call
+                              ci_level <<- ci_level
                               if(ci_level < 0 | ci_level > 1) stop('invalid ci_level')
                               alpha <- (1 - ci_level)/2
                               p_low = alpha
                               p_hi  = 1 - alpha
                               ci_list <- list()
                               rowNames <- rownames(newdata)
-                              if(is.null(rowNames)){
+                              if(is.null(newdata)){
+                                rowNames <- 'baseline'
+                              }
+                              else if(is.null(rowNames)){
                                 if(nrow(newdata) > 0){
                                   rownames(newdata) <<- 1:nrow(newdata)
                                   rowNames <- rownames(newdata)
@@ -241,7 +268,8 @@ surv_cis <- setRefClass("surv_cis",
                               for(i in seq_along(rowNames)){
                                 this_name <- rowNames[i]
                                 ci_list[[this_name]] <- fit_one_row(fit, newdata_row = get_dataframe_row(newdata, i), 
-                                                                    p = p, p_ends = c(p_low, p_hi), 
+                                                                    p = p, q = q, 
+                                                                    p_ends = c(p_low, p_hi), 
                                                                     MC_samps = MC_samps)
                               }
                               cis <<- ci_list
@@ -249,31 +277,41 @@ surv_cis <- setRefClass("surv_cis",
                             show = function(){
                               cat("Model call:\n  ")
                               print(call,) 
+                              cat("Credible Level =", ci_level, "\n")
                               for(i in seq_along(cis)){
                                 this_name <- names(cis)[i]
                                 cat("Rowname: ", this_name, "\n")
                                 print(cis[[i]])
                               }
                             },
-                            one_lines = function(index = 1, this_col, ...){
+                            one_lines = function(index = 1, this_col, include_cis, ...){
                               argList <- list(...)
                               argList$col = this_col
-                              argList$lty = 2
+                              argList$lty = 1
                               these_cis <- cis[[index]]
-                              argList$x = these_cis[,2]
-                              argList$y = 1 - these_cis[,1]
+                              perc = these_cis[,1]
+                              est = these_cis[,3]
+                              lower = these_cis[,4]
+                              upper = these_cis[,5]
+                              argList$y = 1 - perc
+                              argList$x = est
                               do.call(lines, argList)
-                              argList$x = these_cis[,3]
-                              do.call(lines, argList)
+                              if(include_cis){
+                                argList$lty = 2
+                                argList$x = lower
+                                do.call(lines, argList)
+                                argList$x = upper
+                                do.call(lines, argList)
+                              }
                             },
-                            all_lines = function(cols = NULL, ...){
+                            all_lines = function(cols = NULL, include_cis, ...){
                               nCIs = length(cis)
                               nCols <- length(cols)
                               if(nCols == 0){ cols = 1:nCIs; nCols = length(cols) }
                               if(nCols == 1){ cols = rep(cols, nCIs); nCols = length(cols) }
                               if(nCols != nCIs) stop("number colors provided does not match up with number of CI's to plot")
                               argList <- list(...)
-                              
+                              argList$include_cis = include_cis
                               for(i in seq_along(cis)){ 
                                 argList$index = i
                                 argList$this_col = cols[i]
