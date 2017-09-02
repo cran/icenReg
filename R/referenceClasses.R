@@ -9,12 +9,10 @@ icenReg_fit <- setRefClass(Class = 'icenReg_fit',
                                   'reg_pars',
                                   'terms',
                                   'xlevels',
-                                  'pca_coefs',
-                                  'pca_info',
-                                  'baseOffset',
                                   'llk',
                                   'iterations',
-                                  'score'
+                                  'score', 
+                                  'covarOffset'
                        ),
                        methods = list(
                          show = function(){

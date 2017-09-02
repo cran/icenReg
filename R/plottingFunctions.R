@@ -85,6 +85,9 @@ lines.icenReg_fit <- function(x, y, newdata = NULL,
     if(length(use_colors) == 1) use_colors = rep(use_colors, nRows)
     if(length(use_colors) != nRows) stop("number of length(col) must be 0, 1 or equal to number of rows of new data")
   }
+  else{
+    if(length(colors) == 0) colors = 1
+  }
   if(fun == 'surv'){ s_trans <- function(x){x}; yName = 'S(t)'}
   else if(fun == 'cdf'){ s_trans <- function(x){1-x}; yName = 'F(t)' }
   else stop('"fun" option not recognized. Choices are "surv" or "cdf"')
