@@ -1,4 +1,4 @@
-5d7c01a8efae2ea50192ebe03b52be64 *DESCRIPTION
+fe27843c9efeb277657b262b9d71831c *DESCRIPTION
 432d145a8701d5f204c7b9b5c9afaada *NAMESPACE
 2bc79060cf5bf7a08a065ae067efb01a *NEWS
 5a3f5ca006ef764d43bfed63101b6263 *R/RcppExports.R
@@ -17,10 +17,10 @@ c64e78e01584fe31dbe4b50395acfd96 *R/plottingFunctions.R
 afb29df4284696b70c8eb58fafac0357 *build/vignette.rds
 8f97f3493c81f369ae808505bf5331da *data/IR_diabetes.RData
 6497f5de6350063a1e58af0703d9413a *data/miceData.RData
-b1707b83e09cc029d0435d2e738d18ad *inst/CITATION
+da3ad78f4b232be905add45ac3e59d99 *inst/CITATION
 821c09f9f6db350899f1b6acf83ac2c5 *inst/doc/icenReg.R
 15bf89c302c1d1d184c36a60838f14f1 *inst/doc/icenReg.Rnw
-d8b6dcce82c1efe79abadfb175e5725a *inst/doc/icenReg.pdf
+07e4be2653ba119d41619b68959f6163 *inst/doc/icenReg.pdf
 40788baf03506bd06e12d8aeda0129a4 *man/IR_diabetes.Rd
 f0be3e19c2b77ed3fb963e46624e3c47 *man/bayesControls.Rd
 ad1f5931f23fea247081900ab8451d08 *man/cs2ic.Rd
@@ -50,7 +50,7 @@ f62519e37d7bad7d866c6fb2b1d88bad *src/icenReg_files/EMICM.h
 428171774d7346f684b883502015e78f *src/icenReg_files/bivariateNPMLE.cpp
 40b1f1dfdd667c7f68d21fd1ba17c181 *src/icenReg_files/bivariateNPMLE.h
 b22ce199f8b7c1d45bd4caacfb75b46f *src/icenReg_files/experimentalCode.cpp
-ddfc76d44c9c558e7df581088260d800 *src/icenReg_files/ic_bayes.cpp
+d4028a218619744b386218a4cf1a9bf1 *src/icenReg_files/ic_bayes.cpp
 a647cc93cbd279e26c245bff9e1f15a3 *src/icenReg_files/ic_bayes.h
 fda77560214cdeb07d01a36cdcde1b51 *src/icenReg_files/ic_par.cpp
 c59be06c5845b1bc95ca97336711092f *src/icenReg_files/ic_par.h
