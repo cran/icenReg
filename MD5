@@ -1,6 +1,6 @@
-fe27843c9efeb277657b262b9d71831c *DESCRIPTION
+794afa20188591a00abfe7b8ad62864c *DESCRIPTION
 432d145a8701d5f204c7b9b5c9afaada *NAMESPACE
-2bc79060cf5bf7a08a065ae067efb01a *NEWS
+294772a7be4aaed4e74c9ea86a6ec151 *NEWS
 5a3f5ca006ef764d43bfed63101b6263 *R/RcppExports.R
 e5bc4653c5c70b776c43ff9aeb5f4744 *R/dataRoxygen.R
 ba73a9d80052af21661c8b6fa4e88c88 *R/ic_bayes.R
@@ -8,7 +8,7 @@ ba73a9d80052af21661c8b6fa4e88c88 *R/ic_bayes.R
 4745b59e5e802acb62cf391b10bd314d *R/ic_par.R
 ac1af4c7a7b843607807afcb19dead8c *R/ic_sp.R
 552d854e63ed9d2616e492833c51bb70 *R/icenReg_CV.R
-54355d26581d66f5b76e3ed1afe6758e *R/internal_utilities.R
+7055aec484fa0cca71906c4a2261af81 *R/internal_utilities.R
 fb7fa8ebd8539230f8b5944b390122df *R/optCliq.R
 c64e78e01584fe31dbe4b50395acfd96 *R/plottingFunctions.R
 9dbcb29228cd924fe48612faee4692df *R/referenceClasses.R
@@ -20,7 +20,7 @@ afb29df4284696b70c8eb58fafac0357 *build/vignette.rds
 da3ad78f4b232be905add45ac3e59d99 *inst/CITATION
 821c09f9f6db350899f1b6acf83ac2c5 *inst/doc/icenReg.R
 15bf89c302c1d1d184c36a60838f14f1 *inst/doc/icenReg.Rnw
-07e4be2653ba119d41619b68959f6163 *inst/doc/icenReg.pdf
+9732e1099c27f0005c89bb6bbb134ede *inst/doc/icenReg.pdf
 40788baf03506bd06e12d8aeda0129a4 *man/IR_diabetes.Rd
 f0be3e19c2b77ed3fb963e46624e3c47 *man/bayesControls.Rd
 ad1f5931f23fea247081900ab8451d08 *man/cs2ic.Rd
