@@ -12,7 +12,7 @@
 #' @param useMCores      Should multiple cores be used? Each core is used to run a single chain.
 #' 
 #' @description Fits a Bayesian regression model for interval censored data. 
-#' Can fita proportional hazards, proportional odds or accelerated failure time model.  
+#' Can fit a proportional hazards, proportional odds or accelerated failure time model.  
 #'
 #' @details Currently supported distributions choices are "exponential", "weibull", "gamma", 
 #' "lnorm", "loglogistic" and "generalgamma" (i.e. generalized gamma distribution). 
@@ -160,7 +160,7 @@ ic_bayes <- function(formula, data, logPriorFxn = function(x) return(0),
 #' 
 #' @export
 bayesControls <- function(samples = 4000, chains = 4,
-                          useMLE_start = TRUE, burnIn = 1000, 
+                          useMLE_start = TRUE, burnIn = 2000, 
                           samplesPerUpdate = 1000, initSD = 0.1,
                           updateChol = TRUE, acceptRate = 0.25,
                           thin = 5){
