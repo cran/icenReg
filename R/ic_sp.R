@@ -179,7 +179,7 @@ ic_sp <- function(formula, data, model = 'ph', weights = NULL, bs_samples = 0, u
             ' bootstrap samples (out of ', bs_samples, 
             ') were dropped due to singular covariate matrix.',
             'Likely due to very sparse covariate. Be wary of these results.\n', sep = '')
-      bsMat <- bsMat[!incompleteIndicator,]
+      bsMat <- bsMat[!incompleteIndicator,,drop = F]
     }
     covar <- cov(bsMat)
   }else{ 
