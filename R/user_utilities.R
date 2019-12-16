@@ -468,8 +468,15 @@ diag_covar <- function(object, varName,
 #' estP <- getFitEsts(fit, q = 400)
 #' @author Clifford Anderson-Bergman
 #' @export
-getFitEsts <- function(fit, newdata, p, q){
-  if(missing(newdata)) newdata <- NULL
+getFitEsts <- function(fit, newdata = NULL, p, q){
+  if(is.null(newdata)){}
+  else{
+    if(!identical(newdata, "midValues")){ 
+      if(!is(newdata, "data.frame")){ 
+        stop("newdata should be a data.frame")
+      }
+    }
+  }
   etas <- get_etas(fit, newdata)
   
   
@@ -511,14 +518,16 @@ getFitEsts <- function(fit, newdata, p, q){
   
   if(type == 'q'){
     ans <- getSurvProbs(xs /scale_etas, surv_etas, 
-                        baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
+                        baselineInfo = baselineInfo, 
+                        regMod = regMod, baseMod = baseMod)
 #    ans <- ans * scale_etas
     return(ans)
   }
   else if(type == 'p'){
 #    xs <- xs / scale_etas
     ans <- getSurvTimes(xs, surv_etas, 
-                        baselineInfo = baselineInfo, regMod = regMod, baseMod = baseMod)
+                        baselineInfo = baselineInfo, 
+                        regMod = regMod, baseMod = baseMod)
     ans <- ans * scale_etas
   return(ans)
   }
@@ -623,7 +632,9 @@ predict.icenReg_fit <- function(object, type = 'response',
   if(type == 'lp')
     return( log(get_etas(object, newdata = newdata)))
   if(type == 'response')
-    return(getFitEsts(fit = object, newdata = newdata))
+    return(getFitEsts(fit = object, 
+                      newdata = newdata, 
+                      p = 0.5))
   stop('"type" not recognized: options are "lp", "response" and "impute"')
 }
 

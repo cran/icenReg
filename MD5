@@ -1,6 +1,6 @@
-ac2d9daf4a3f65ccdd4a6b6de8c78a75 *DESCRIPTION
+9dbf476360e01acf43130d1b982e2a4b *DESCRIPTION
 feaab737c8499eef26838a4d55f40c92 *NAMESPACE
-e15c33f206813aadc576c5363f685b78 *NEWS
+cb565edaef23b97ae762a0533369ad50 *NEWS
 8aa7e6f6627e47e8ce5de72f99bdeef4 *R/RcppExports.R
 6379cd5b26560b30027cce4bf4365e99 *R/clusterBootstrap.R
 e5bc4653c5c70b776c43ff9aeb5f4744 *R/dataRoxygen.R
@@ -14,14 +14,14 @@ fb7fa8ebd8539230f8b5944b390122df *R/optCliq.R
 b0930d461769898c60e63c4f08d635cc *R/plottingFunctions.R
 8229e35a54a33fcb3555901a34dd6a19 *R/referenceClasses.R
 7d7ff36f0a776990efb745eb563d25e1 *R/simulationFunctions.R
-719c1118a9663037a8bd4552aae525e3 *R/user_utilities.R
+20fc3f105a74e4844b2e97d70df386fd *R/user_utilities.R
 e61ba5ff76be501665bb01a01cc9b8de *build/vignette.rds
 8f97f3493c81f369ae808505bf5331da *data/IR_diabetes.RData
 6497f5de6350063a1e58af0703d9413a *data/miceData.RData
 da3ad78f4b232be905add45ac3e59d99 *inst/CITATION
 0c9d0ce01bc28e099c3401a70a17bf9b *inst/doc/icenReg.R
 9cceb79180b35016e02074d177a5970e *inst/doc/icenReg.Rnw
-70e543b05d9d91ab66d7e87611fc1a4e *inst/doc/icenReg.pdf
+e20824872c74bb876a0f81e5f892e5e2 *inst/doc/icenReg.pdf
 40788baf03506bd06e12d8aeda0129a4 *man/IR_diabetes.Rd
 dcf1026b8f48edb796cb78f27ff157a9 *man/bayesControls.Rd
 ad1f5931f23fea247081900ab8451d08 *man/cs2ic.Rd
