@@ -1,21 +1,25 @@
 Package: icenReg
 Type: Package
 Title: Regression Models for Interval Censored Data
-Version: 2.0.13
-Date: 2019-12-16
-Author: Clifford Anderson-Bergman
+Version: 2.0.14
+Date: 2020-5-26
+Authors@R: person("Clifford", 
+          "Anderson-Bergman", 
+          role = c("aut","cre"), 
+          email = "pistacliffcho@gmail.com")
+Maintainer: Clifford Anderson-Bergman <pistacliffcho@gmail.com>
 Depends: survival, Rcpp, coda
 Imports: foreach, methods, MLEcens
 LinkingTo: Rcpp, RcppEigen
-Maintainer: Clifford Anderson-Bergman <pistacliffcho@gmail.com>
 Description: Regression models for interval censored data. Currently supports
     Cox-PH, proportional odds, and accelerated failure time models. Allows for
     semi and fully parametric models (parametric only for accelerated failure
     time models) and Bayesian parametric models. Includes functions for easy visual
     diagnostics of model fits and imputation of censored data.
 License: LGPL (>= 2.0, < 3)
-Packaged: 2019-12-16 16:18:11 UTC; cliffordanderson-bergman
+Packaged: 2020-05-27 05:20:21 UTC; pista
 RoxygenNote: 6.1.1
 NeedsCompilation: yes
+Author: Clifford Anderson-Bergman [aut, cre]
 Repository: CRAN
-Date/Publication: 2019-12-16 17:30:13 UTC
+Date/Publication: 2020-05-27 06:20:02 UTC
