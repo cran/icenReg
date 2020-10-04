@@ -1,5 +1,8 @@
 
 UPDATES:
+v2.0.15
+Fixed bug that allowed NA's in covariates
+
 v2.0.14
 Fixed bug when fitting Bayesian model without covariates (regression parameter names)
 Condensed handling of predictor/response from formula/data
