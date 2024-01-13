@@ -1,8 +1,8 @@
 Package: icenReg
 Type: Package
 Title: Regression Models for Interval Censored Data
-Version: 2.0.15
-Date: 2020-10-03
+Version: 2.0.16
+Date: 2024-01-13
 Author: Clifford Anderson-Bergman
 Depends: survival, Rcpp, coda
 Imports: foreach, methods, MLEcens
@@ -14,8 +14,8 @@ Description: Regression models for interval censored data. Currently supports
     time models) and Bayesian parametric models. Includes functions for easy visual
     diagnostics of model fits and imputation of censored data.
 License: LGPL (>= 2.0, < 3)
-Packaged: 2020-10-04 05:35:09 UTC; cliffordanderson-bergman
-RoxygenNote: 6.1.1
+Packaged: 2024-01-13 19:45:53 UTC; cliffordanderson-bergman
+RoxygenNote: 7.3.0
 NeedsCompilation: yes
 Repository: CRAN
-Date/Publication: 2020-10-04 06:20:02 UTC
+Date/Publication: 2024-01-13 20:30:02 UTC

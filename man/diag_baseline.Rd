@@ -4,10 +4,16 @@
 \alias{diag_baseline}
 \title{Compare parametric baseline distributions with semi-parametric baseline}
 \usage{
-diag_baseline(object, data, model = "ph", weights = NULL,
-  dists = c("exponential", "weibull", "gamma", "lnorm", "loglogistic",
-  "generalgamma"), cols = NULL, lgdLocation = "bottomleft",
-  useMidCovars = T)
+diag_baseline(
+  object,
+  data,
+  model = "ph",
+  weights = NULL,
+  dists = c("exponential", "weibull", "gamma", "lnorm", "loglogistic", "generalgamma"),
+  cols = NULL,
+  lgdLocation = "bottomleft",
+  useMidCovars = T
+)
 }
 \arguments{
 \item{object}{Either a formula or a model fit with \code{ic_sp} or \code{ic_par}}

@@ -4,9 +4,17 @@
 \alias{lines.icenReg_fit}
 \title{Plotting for icenReg Fits}
 \usage{
-\method{lines}{icenReg_fit}(x, y, newdata = NULL, fun = "surv",
-  cis = F, ci_level = 0.9, survRange = c(0.025, 1),
-  evalPoints = 20, ...)
+\method{lines}{icenReg_fit}(
+  x,
+  y,
+  newdata = NULL,
+  fun = "surv",
+  cis = F,
+  ci_level = 0.9,
+  survRange = c(0.025, 1),
+  evalPoints = 20,
+  ...
+)
 }
 \arguments{
 \item{x}{icenReg fit}

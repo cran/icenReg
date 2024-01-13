@@ -4,9 +4,21 @@
 \alias{diag_covar}
 \title{Evaluate covariate effect for regression model}
 \usage{
-diag_covar(object, varName, data, model, weights = NULL,
-  yType = "meanRemovedTransform", factorSplit = TRUE, numericCuts, col,
-  xlab, ylab, main, lgdLocation = NULL)
+diag_covar(
+  object,
+  varName,
+  data,
+  model,
+  weights = NULL,
+  yType = "meanRemovedTransform",
+  factorSplit = TRUE,
+  numericCuts,
+  col,
+  xlab,
+  ylab,
+  main,
+  lgdLocation = NULL
+)
 }
 \arguments{
 \item{object}{Either a formula or a model fit with \code{ic_sp} or \code{ic_par}}

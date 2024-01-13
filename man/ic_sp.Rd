@@ -4,8 +4,16 @@
 \alias{ic_sp}
 \title{Semi-Parametric models for Interval Censored Data}
 \usage{
-ic_sp(formula, data, model = "ph", weights = NULL, bs_samples = 0,
-  useMCores = F, B = c(0, 1), controls = makeCtrls_icsp())
+ic_sp(
+  formula,
+  data,
+  model = "ph",
+  weights = NULL,
+  bs_samples = 0,
+  useMCores = F,
+  B = c(0, 1),
+  controls = makeCtrls_icsp()
+)
 }
 \arguments{
 \item{formula}{regression formula. Response must be a \code{Surv} object of type \code{'interval2'}or \code{cbind}. See details.}

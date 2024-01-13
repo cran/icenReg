@@ -4,8 +4,14 @@
 \alias{survCIs}
 \title{Confidence/Credible intervals for survival curves}
 \usage{
-survCIs(fit, newdata = NULL, p = NULL, q = NULL, ci_level = 0.95,
-  MC_samps = 4000)
+survCIs(
+  fit,
+  newdata = NULL,
+  p = NULL,
+  q = NULL,
+  ci_level = 0.95,
+  MC_samps = 4000
+)
 }
 \arguments{
 \item{fit}{Fitted model from \code{ic_par} or \code{ic_bayes}}

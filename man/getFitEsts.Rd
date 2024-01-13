@@ -4,7 +4,7 @@
 \alias{getFitEsts}
 \title{Get Survival Curve Estimates from icenReg Model}
 \usage{
-getFitEsts(fit, newdata, p, q)
+getFitEsts(fit, newdata = NULL, p, q)
 }
 \arguments{
 \item{fit}{model fit with \code{ic_par} or \code{ic_sp}}
@@ -24,7 +24,7 @@ For the \code{ic_sp} and \code{ic_par}, the MLE estimate is returned. For \code{
 the MAP estimate is returned. To compute the posterior means, use \code{sampleSurv}.
 
 If \code{newdata} is left blank, baseline estimates will be returned (i.e. all covariates = 0). 
-If \code{p} is provided, will return the estimated F^{-1}(p | x). If \code{q} is provided, 
+If \code{p} is provided, will return the estimated Q(p | x), where Q is the inverse of F. If \code{q} is provided, 
 will return the estimated F(q | x). If neither \code{p} nor \code{q} are provided, 
 the estimated conditional median is returned.
  

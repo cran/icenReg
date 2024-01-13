@@ -296,7 +296,7 @@ void icm_Abst::icm_step(){
     if(llk_new < llk_st){
         baseCH = backupCH;
         llk_new = sum_llk();
-        
+        /*
         int numNAs = 0;
         double sumAbsProp = 0;
         for(int i = 0; i < thisSize; i++){
@@ -307,6 +307,7 @@ void icm_Abst::icm_step(){
                 sumAbsProp += abs(prop[i]);
             }
         }
+        */
         mult_vec(0, prop);
 
     }

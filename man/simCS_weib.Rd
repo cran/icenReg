@@ -4,8 +4,7 @@
 \alias{simCS_weib}
 \title{Simulate Current Status Data}
 \usage{
-simCS_weib(n = 100, b1 = 0.5, b2 = -0.5, model = "ph", shape = 2,
-  scale = 2)
+simCS_weib(n = 100, b1 = 0.5, b2 = -0.5, model = "ph", shape = 2, scale = 2)
 }
 \arguments{
 \item{n}{Number of observations}

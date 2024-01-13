@@ -4,8 +4,16 @@
 \alias{simDC_weib}
 \title{Simulate Doubly Censored Data}
 \usage{
-simDC_weib(n = 100, b1 = 0.5, b2 = -0.5, model = "ph", shape = 2,
-  scale = 2, lowerLimit = 0.75, upperLimit = 2)
+simDC_weib(
+  n = 100,
+  b1 = 0.5,
+  b2 = -0.5,
+  model = "ph",
+  shape = 2,
+  scale = 2,
+  lowerLimit = 0.75,
+  upperLimit = 2
+)
 }
 \arguments{
 \item{n}{Number of observations}

@@ -1,155 +1,153 @@
+# *News* 
 
-UPDATES:
-v2.0.15
-Fixed bug that allowed NA's in covariates
+## icenReg 2.0.15
+* Fixed C++ type casting bug (no impact: used warning)
 
-v2.0.14
-Fixed bug when fitting Bayesian model without covariates (regression parameter names)
+## icenReg 2.0.14 
+* Fixed bug when fitting Bayesian model without covariates (regression parameter names)
 Condensed handling of predictor/response from formula/data
 
-v2.0.13
-Set default argument of newdata = NULL in getFitEsts for compatiability with ICcforest
+## icenReg 2.0.13
+* Set default argument of newdata = NULL in getFitEsts for compatiability with ICcforest
 
-v2.0.12
-Removed warnings involved with "contrasts" issue in model.matrix
-Added warning to getFitEsts if newdata is a data.frame
+## icenReg 2.0.12
+* Removed warnings involved with "contrasts" issue in model.matrix
+* Added warning to getFitEsts if newdata is a data.frame
 
-v2.0.11
-Fixed issue when bootstrap sample drops observations with only one covariate
+## icenReg 2.0.11
+* Fixed issue when bootstrap sample drops observations with only one covariate
 
-v2.0.10
-Fixed issue with lnorm distribution
-Fixed contrast warning
+## icenReg 2.0.10
+* Fixed issue with lnorm distribution
+* Fixed contrast warning
 
-v2.0.9 
-Fixed bug when fitting Bayesian model without covariates
-Changed C++ PI to M_PI at Dirk's request
-Added ir_clustBoot to account for repeated measures
-Reduced run time for survCIs example (switched from ic_bayes to ic_par)
+## icenReg 2.0.9 
+*Fixed bug when fitting Bayesian model without covariates
+*Changed C++ PI to M_PI at Dirk's request
+*Added ir_clustBoot to account for repeated measures
+*Reduced run time for survCIs example (switched from ic_bayes to ic_par)
 
-v2.0.8
-Allows for weights in ic_np
-Allows `plot_legend = F` for ic_npList
+## icenReg 2.0.8
+* Allows for weights in ic_np
+* Allows `plot_legend = F` for ic_npList
 
-v2.0.7
-Fixed bug with linear predictor being offset pointed out by Ferenci Tamas
+## icenReg 2.0.7
+* Fixed bug with linear predictor being offset pointed out by Ferenci Tamas
 
-v2.0.6
-Added JSS citation
+## icenReg 2.0.6
+* Added JSS citation
 
-v2.0.4
-Fixed bug in NAs being mishandled
+## icenReg 2.0.4
+* Fixed bug in NAs being mishandled
 
-v2.0.3
-Fixed bug with expanding splines
-Offset covariates to have mean 0 for faster computation
-
-
-v2.0.2
-Fixed bug regarding releveling with a single covariate with only two levels inside formula
-Internal changes to plotting
-Allowed p OR q to be supplied to survCIs
-Allowed MCMC chains to be run in parallel
-
-v2.0.1
-Fixed rownames bug for imputeCens when imputeType = ‘median’
-Fixed open/closed interval bug pointed out by Dr Bogaerts 
-Added sampling from posterior survival curves
-Added confidence intervals
-Added names(fit) method
-
-v2.0.0
-Added coef active binding for regression models (i.e. fit$coef is allowed)
-Fixed issue with fitting model with no regression parameters
-Reorganized code files
-Added Bayes models
-
-v1.3.6
-Allow for declaration of whether intervals are open or closed for 
-ic_sp and ic_np
-Added simulationFunctions.R
-Uses Roxygen for man files
-
-v1.3.5
-Added parametric AFT models
-fixed bug in plot.icenRegFit regarding xlim and ylim for semiparametric model
-sped up ic_sp
-added vignette
-
-v1.3.4
-fixed show() for summary class with no covariates
-added ic_np for fitting NPMLE specifically (*much* faster)
-switched syntax from “final_llk” to “llk” for all models
-made plot() and lines() more user-friendly 
-Switched to RcppEigen, rather than including static C++ library
-
-v1.3.3 
-Fixed memory access issue reported by CRAN
-
-v1.3.2
-Preparing for JSS submission
-Removed unpublished algorithms and methods
-
-v1.3.1
-Imported method as reported by CRAN
-
-v1.3.0 
-getFitEsts is much faster
-added predict function
-added imputeCens function
-added generalized gamma distribution to choice of parametric families
-added imputed cross validation
-added plot method for sp_curves
-numerically stabilized ic_sp(model = 'ph')
+## icenReg 2.0.3
+* Fixed bug with expanding splines
+* Offset covariates to have mean 0 for faster computation
 
 
-v1.2.8
-Resolved issue of licenses and gave proper credit to the Eigen team for 
-using their code for matrix algebra
-Switched to reference classes for fits, rather than lists with reassigned classes
-Fixed bug with getFitEsts
-Added methods for calculating the NPMLE (univariate or bivariate)
-ic_par sped up, especially for models with lots of covariates
-included use of cbind for response (i.e. cbind(l, u) ~…), rather than Surv(l, u, type = ‘interval’) ~ …, which is still supported
-Added constrained gradient ascent step to ic_sp
-Switched to partially numeric derivatives for ic_par, greatly speeding up calculations for models with many covariates
+## icenReg 2.0.2
+* Fixed bug regarding releveling with a single covariate with only two levels inside formula
+* Internal changes to plotting
+* Allowed p OR q to be supplied to survCIs
+* Allowed MCMC chains to be run in parallel
+
+## icenReg 2.0.1
+* Fixed rownames bug for imputeCens when imputeType = ‘median’
+* Fixed open/closed interval bug pointed out by Dr Bogaerts 
+* Added sampling from posterior survival curves
+* Added confidence intervals
+* Added names(fit) method
+
+## icenReg 2.0.0
+* Added coef active binding for regression models (i.e. fit$coef is allowed)
+* Fixed issue with fitting model with no regression parameters
+* Reorganized code files
+* Added Bayes models
+
+## icenReg 1.3.6
+* Allow for declaration of whether intervals are open or closed for ic_sp and ic_np
+* Added simulationFunctions.R
+* Uses Roxygen for man files
+
+## icenReg 1.3.5
+* Added parametric AFT models
+* fixed bug in plot.icenRegFit regarding xlim and ylim for semiparametric model
+* sped up ic_sp
+* added vignette
+
+## icenReg 1.3.4
+* fixed show() for summary class with no covariates
+* added ic_np for fitting NPMLE specifically (*much* faster)
+* switched syntax from “final_llk” to “llk” for all models
+* made plot() and lines() more user-friendly 
+* Switched to RcppEigen, rather than including static C++ library
+
+## icenReg 1.3.3 
+* Fixed memory access issue reported by CRAN
+
+## icenReg 1.3.2
+* Preparing for JSS submission
+* Removed unpublished algorithms and methods
+
+## icenReg 1.3.1
+* Imported method as reported by CRAN
+
+## icenReg 1.3.0 
+* getFitEsts is much faster
+* added predict function
+* added imputeCens function
+* added generalized gamma distribution to choice of parametric families
+* added imputed cross validation
+* added plot method for sp_curves
+* numerically stabilized ic_sp(model = 'ph')
 
 
-v1.2.7
-Added dependencies to “methods” package into NAMESPACE and DESCRIPTION
-
-v1.2.6
-models allow for no covariates
-summary(fit) now returns a summary object rather than just printing
-At C++ level, switched isnan to ISNAN
-removed browser() call
-
-v1.2.5
-Adding “weights” options to model fits
-Cleaned up manual
-Added warning to diag_covar if incorrect yType selected
-Added essIncData and essIncData_small datasets
-Switched to analytic derivatives for ic_sp
-Stabilized ic_par algorithm
-Preprocessed covariates with PCA
+## icenReg 1.2.8
+* Resolved issue of licenses and gave proper credit to the Eigen team for using their code for matrix algebra
+* Switched to reference classes for fits, rather than lists with reassigned classes
+* Fixed bug with getFitEsts
+* Added methods for calculating the NPMLE (univariate or bivariate)
+* ic_par sped up, especially for models with lots of covariates
+* included use of cbind for response (i.e. cbind(l, u) ~…), rather than Surv(l, u, type = ‘interval’) ~ …, which is still supported
+* Added constrained gradient ascent step to ic_sp
+* Switched to partially numeric derivatives for ic_par, greatly speeding up calculations for models with many covariates
 
 
-v1.2.1-4
-Fixing bugs reported by CRAN check
+## icenReg 1.2.7
+* Added dependencies to “methods” package into NAMESPACE and DESCRIPTION
 
-v1.2.0
-Added fully parametric models
-Added diagnostic tools diag_baseline and diag_covar
-Switched to Active Set Algorithm for semi-parametric models
-Added proportional odds model
-At C++ level, switched to abstract class IC_OptimInfo instead of ICPH_OptimInfo
-Added simulation of proportional odds
+## icenReg 1.2.6
+* models allow for no covariates
+* summary(fit) now returns a summary object rather than just printing
+* At C++ level, switched isnan to ISNAN
+* removed browser() call
 
-v1.1.1:
-Stricter convergence criteria (10^-10 instead of 10^-7)
-Allows for bs_samples = 0 in ic_ph
-Allows for fitting of models with only 1 covariate
-Fixed bug in parameterization of imputation model
-Fixed bug that imputation model sometimes simulates Inf, breaking coxph
-Added dataset (mdata)
-slight modification in plot of survival curve
+## icenReg 1.2.5
+* Adding “weights” options to model fits
+* Cleaned up manual
+* Added warning to diag_covar if incorrect yType selected
+* Added essIncData and essIncData_small datasets
+* Switched to analytic derivatives for ic_sp
+* Stabilized ic_par algorithm
+* Preprocessed covariates with PCA
+
+
+## icenReg 1.2.1-4
+* Fixing bugs reported by CRAN check
+
+## icenReg 1.2.0
+* Added fully parametric models
+* Added diagnostic tools diag_baseline and diag_covar
+* Switched to Active Set Algorithm for semi-parametric models
+* Added proportional odds model
+* At C++ level, switched to abstract class IC_OptimInfo instead of ICPH_OptimInfo
+* Added simulation of proportional odds
+
+## icenReg 1.1.1:
+* Stricter convergence criteria (10^-10 instead of 10^-7)
+* Allows for bs_samples = 0 in ic_ph
+* Allows for fitting of models with only 1 covariate
+* Fixed bug in parameterization of imputation model
+* Fixed bug that imputation model sometimes simulates Inf, breaking coxph
+* Added dataset (mdata)
+* slight modification in plot of survival curve

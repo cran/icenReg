@@ -4,8 +4,7 @@
 \alias{makeCtrls_icsp}
 \title{Control Parameters for ic_sp}
 \usage{
-makeCtrls_icsp(useGA = T, maxIter = 10000, baseUpdates = 5,
-  regStart = NULL)
+makeCtrls_icsp(useGA = T, maxIter = 10000, baseUpdates = 5, regStart = NULL)
 }
 \arguments{
 \item{useGA}{Should constrained gradient ascent step be used?}

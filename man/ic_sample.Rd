@@ -4,8 +4,7 @@
 \alias{ic_sample}
 \title{Draw samples from an icenReg model}
 \usage{
-ic_sample(fit, newdata = NULL, sampleType = "fullSample",
-  samples = 5)
+ic_sample(fit, newdata = NULL, sampleType = "fullSample", samples = 5)
 }
 \arguments{
 \item{fit}{icenReg model fit}
